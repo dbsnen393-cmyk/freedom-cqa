@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {calculate,initialCriteria,demoConversations} from '../dist/domain.js';
+import {calculate,initialCriteria,demoConversations} from '../web/domain.js';
 const full=Object.fromEntries(initialCriteria.map(c=>[c.id,{value:c.type==='scale'?Math.max(...c.scale):c.type==='flag'?false:true}]));
 test('Full applicable checklist gives 100',()=>assert.equal(calculate(initialCriteria,full),100));
 test('Criterion 6 score 7/10 contributes 10.5 of its 15 weight',()=>{const a=structuredClone(full);a.management.value=7;assert.equal(calculate(initialCriteria,a),95.5);});

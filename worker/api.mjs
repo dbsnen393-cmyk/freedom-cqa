@@ -1,4 +1,5 @@
 import {preprocessConversation} from '../web/preprocess.js';
+import {AIError,assessConversation,configuredAI} from './assessment.mjs';
 const datasetCache=new Map(), audioCache=new Map(), audioPending=new Map();
 const DATA_TTL=60_000, AUDIO_TTL=240_000, MAX_AUDIO_BYTES=28*1024*1024;
 const ORGANIZER_HOST="ec88f21f1accecf38e20095a9fe175.a5.environment.api.powerplatform.com";
@@ -65,31 +66,73 @@ export function rangeResponse(bytes,type,range,method="GET"){
  if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<0||start>=total||end<start)return new Response(null,{status:416,headers:{"Content-Range":"bytes */"+total}});
  return new Response(method==="HEAD"?null:bytes.slice(start,end+1),{status:206,headers:{...headers,"Content-Length":String(end-start+1),"Content-Range":"bytes "+start+"-"+end+"/"+total}});
 }
-export async function handleApi(request,env){
+const MAX_DIALOGUE_BODY=600000;
+function apiError(code,message,status){return jsonResponse({error:message,code},status);}
+function safeAIError(error){return error instanceof AIError?apiError(error.code,error.message,error.status):apiError('AI_INTERNAL','Не удалось завершить оценку. Результат не сохранён.',500);}
+async function dialogueBody(request){
+ if(!/^application\/json(?:\s*;|\s*$)/i.test(request.headers.get('Content-Type')||''))throw new AIError('JSON_REQUIRED','Ожидается JSON.',415);
+ if(Number(request.headers.get('Content-Length'))>MAX_DIALOGUE_BODY)throw new AIError('BODY_TOO_LARGE','Пакет превышает 600 КБ.',413);
+ const reader=request.body?.getReader();if(!reader)throw new AIError('BODY_REQUIRED','Нет данных диалога.',400);
+ const chunks=[];let total=0;
+ try{while(true){const {done,value}=await reader.read();if(done)break;total+=value.byteLength;if(total>MAX_DIALOGUE_BODY){await reader.cancel().catch(()=>{});throw new AIError('BODY_TOO_LARGE','Пакет превышает 600 КБ.',413);}chunks.push(value);}}
+ finally{reader.releaseLock();}
+ const bytes=new Uint8Array(total);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}
+ let body;try{body=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}catch{throw new AIError('INVALID_JSON','Не удалось прочитать JSON диалога.',400);}
+ if(!body||Array.isArray(body)||typeof body!=='object'||!body.conversation||Array.isArray(body.conversation)||typeof body.conversation!=='object'||!Array.isArray(body.conversation.messages)||body.conversation.messages.length>5000||!Array.isArray(body.criteria)||body.criteria.length>100)throw new AIError('INVALID_DIALOGUE','Проверьте диалог и чек-лист. Максимум 5 000 реплик и 100 критериев.',400);
+ return body;
+}
+export async function verifyAI(env={},options={}){
+ const key=typeof env.OPENAI_API_KEY==='string'?env.OPENAI_API_KEY.trim():'';
+ if(!key)throw new AIError('OPENAI_NOT_CONFIGURED','Добавьте API-ключ OpenAI в настройках подключения.',503);
+ const config=configuredAI(env);if(!config.configured)throw new AIError('INVALID_MODEL','Проверьте название модели в настройках подключения.',400);
+ const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),20000);
+ try{
+  const response=await (options.fetcher||fetch)('https://api.openai.com/v1/models/'+encodeURIComponent(config.model),{method:'GET',headers:{Authorization:'Bearer '+key,Accept:'application/json'},redirect:'error',signal:controller.signal});
+  try{await response.body?.cancel();}catch{}
+  if(!response.ok){
+   if(response.status===401)throw new AIError('OPENAI_AUTH','OpenAI отклонил API-ключ. Проверьте ключ в настройках.',401);
+   if(response.status===403)throw new AIError('OPENAI_ACCESS','У этого ключа нет доступа к выбранной модели или проекту OpenAI.',403);
+   if(response.status===404)throw new AIError('OPENAI_MODEL_NOT_FOUND','Модель не найдена или недоступна этому ключу. Проверьте её название.',404);
+   if(response.status===429)throw new AIError('OPENAI_LIMIT','OpenAI сообщил о лимите запросов. Проверьте лимиты и повторите позже.',429);
+   throw new AIError('OPENAI_UNAVAILABLE','OpenAI временно недоступен. Повторите проверку позже.',502);
+  }
+  return {verified:true,provider:'openai',model:config.model};
+ }catch(error){
+  if(error instanceof AIError)throw error;
+  if(controller.signal.aborted||error?.name==='AbortError'||error?.name==='TimeoutError')throw new AIError('OPENAI_TIMEOUT','Время ожидания OpenAI истекло. Повторите проверку позже.',504);
+  throw new AIError('OPENAI_NETWORK','Не удалось связаться с OpenAI. Проверьте подключение и повторите проверку.',502);
+ }finally{clearTimeout(timeout);}
+}
+export async function handleApi(request,env={},options={}){
  const url=new URL(request.url);
- if(!url.pathname.startsWith("/api/"))return null;
- if(url.pathname==='/api/preprocess'){
- if(request.method!=='POST')return jsonResponse({error:'Используйте POST для подготовки диалога.'},405);
- if(!request.headers.get('Content-Type')?.includes('application/json'))return jsonResponse({error:'Ожидается JSON.'},415);
- if(Number(request.headers.get('Content-Length'))>600000)return jsonResponse({error:'Пакет превышает 600 КБ.'},413);
- try{
-  const reader=request.body?.getReader();if(!reader)return jsonResponse({error:'Нет данных диалога.'},400);
-  const chunks=[];let total=0;while(true){const {done,value}=await reader.read();if(done)break;total+=value.byteLength;if(total>600000){await reader.cancel();return jsonResponse({error:'Пакет превышает 600 КБ.'},413);}chunks.push(value);}
-  const bytes=new Uint8Array(total);let offset=0;for(const x of chunks){bytes.set(x,offset);offset+=x.byteLength;}
-  const body=JSON.parse(new TextDecoder().decode(bytes));
-  if(!body?.conversation||typeof body.conversation!=='object'||!Array.isArray(body.conversation.messages)||body.conversation.messages.length>5000||!Array.isArray(body.criteria)||body.criteria.length>100)return jsonResponse({error:'Проверьте диалог и чек-лист. Максимум 5 000 реплик и 100 критериев.'},400);
-  const result=await preprocessConversation(body.conversation,body.criteria,body.checklistVersion);return jsonResponse(result,result.packet?200:422);
- }catch{return jsonResponse({error:'Не удалось прочитать или подготовить данные диалога.'},400);}
+ if(!url.pathname.startsWith('/api/'))return null;
+ const origin=request.headers.get('Origin');
+ if(origin!==null&&origin!==url.origin)return apiError('ORIGIN_REJECTED','Недопустимый источник запроса.',403);
+ if(url.pathname==='/api/ai/config'){
+  if(!['GET','HEAD'].includes(request.method))return apiError('LOCAL_SETTINGS_REQUIRED','Изменить подключение можно в локальной версии сервиса.',405);
+  return jsonResponse({localConfiguration:false,...configuredAI(env)});
  }
- if(!["GET","HEAD"].includes(request.method))return jsonResponse({error:"Метод не поддерживается."},405);
+ if(url.pathname==='/api/ai/verify'){
+  if(request.method!=='POST')return apiError('METHOD_NOT_ALLOWED','Используйте POST для проверки подключения.',405);
+  try{return jsonResponse(await verifyAI(env,options));}catch(error){return safeAIError(error);}
+ }
+ if(url.pathname==='/api/preprocess'||url.pathname==='/api/assess'){
+  if(request.method!=='POST')return apiError('METHOD_NOT_ALLOWED','Используйте POST для обработки диалога.',405);
+  try{
+   const body=await dialogueBody(request);
+   if(url.pathname==='/api/assess')return jsonResponse(await assessConversation(body.conversation,body.criteria,body.checklistVersion,env,options));
+   const result=await preprocessConversation(body.conversation,body.criteria,body.checklistVersion);return jsonResponse(result,result.packet?200:422);
+  }catch(error){return error instanceof AIError?safeAIError(error):apiError('INVALID_DIALOGUE','Не удалось прочитать или подготовить данные диалога.',400);}
+ }
+ if(!['GET','HEAD'].includes(request.method))return apiError('METHOD_NOT_ALLOWED','Метод не поддерживается.',405);
  try{
- if(url.pathname==="/api/status")return jsonResponse({organizerConfigured:Boolean(env.ORGANIZER_API_URL),aiConfigured:false});
- const group=groupFrom(url);
- if(url.pathname==="/api/datasets"){const data=await fetchDataset(group,env,{refresh:url.searchParams.get("refresh")==="1"});return jsonResponse(publicDataset(data,group));}
- if(url.pathname==="/api/audio"){const id=url.searchParams.get("conversation_id");if(!id||id.length>160)throw new Error("Не указан ID диалога.");const audio=await getAudio(group,id,env);return rangeResponse(audio.bytes,audio.type,request.headers.get("Range"),request.method);}
- return jsonResponse({error:"Маршрут не найден."},404);
- }catch(e){
- const known=e.message&&/^(Подключение|API |Некорректный|Набор|Аудио|У этого|Страница|Источник|На странице|Не указан|Недопустимый)/.test(e.message);
- return jsonResponse({isSuccess:false,error:known?e.message:"Не удалось связаться с источником. Повторите попытку."},502);
+  if(url.pathname==='/api/status')return jsonResponse({organizerConfigured:Boolean(env.ORGANIZER_API_URL),aiConfigured:configuredAI(env).configured});
+  const group=groupFrom(url);
+  if(url.pathname==='/api/datasets'){const data=await fetchDataset(group,env,{refresh:url.searchParams.get('refresh')==='1'});return jsonResponse(publicDataset(data,group));}
+  if(url.pathname==='/api/audio'){const id=url.searchParams.get('conversation_id');if(!id||id.length>160)throw new Error('Не указан ID диалога.');const audio=await getAudio(group,id,env);return rangeResponse(audio.bytes,audio.type,request.headers.get('Range'),request.method);}
+  return apiError('NOT_FOUND','Маршрут не найден.',404);
+ }catch(error){
+  const known=error.message&&/^(Подключение|API |Некорректный|Набор|Аудио|У этого|Страница|Источник|На странице|Не указан|Недопустимый)/.test(error.message);
+  return jsonResponse({isSuccess:false,error:known?error.message:'Не удалось связаться с источником. Повторите попытку.',code:'SOURCE_UNAVAILABLE'},502);
  }
 }

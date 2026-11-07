@@ -1,0 +1,21 @@
+/* Selection is independent from the green current-playback/evidence highlight. */
+.message-interaction-hint{padding:11px 20px;margin:0;border-bottom:1px solid var(--line,#e2e9de);font-size:11px;line-height:1.7;color:#697d60;background:#fcfdfb}
+.message.message-interactive{cursor:pointer;position:relative;outline-offset:4px}
+.message.message-interactive:hover{border-color:#b7cda9}
+.message.message-interactive:focus-visible{outline:3px solid #497e9b;outline-offset:3px}
+.message.message-interactive.is-selected{border-color:#5b879e;box-shadow:inset 3px 0 0 #5b879e}
+.message.message-interactive.is-selected.is-playing{box-shadow:inset 3px 0 0 #5b879e,0 0 0 2px #5c9a30}
+.message.message-interactive.is-selected.highlighted{box-shadow:inset 3px 0 0 #5b879e,0 0 0 2px #8bc188}
+.message-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:9px;padding-top:6px;border-top:1px solid #dce5d65c;text-align:left}
+.message-actions button{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:36px;padding:7px 9px;border-radius:6px;font-size:11px;line-height:1.4;font-weight:600;color:#4e6c42;background:#ffffffb8;border:1px solid #dae5d3;cursor:pointer;transition:background .15s,border-color .15s}
+.message-actions button:hover{background:white;border-color:#94b67d}
+.message-actions button:focus-visible{outline:3px solid #497e9b;outline-offset:2px}
+.message-actions button:active{background:#e4eedc}
+.message-actions .message-select-action[aria-pressed=true]{background:#eaf1f5;color:#335a70;border-color:#9cb6c5}
+.message-actions .message-appeal-action{color:#765e35;background:#fffbf2;border-color:#e8ddc3}
+.message-actions .message-appeal-action:hover{background:#fff5df;border-color:#cbb579}
+.message-selection-label{display:inline-flex;align-items:center;font-size:10px;color:#426b82;margin-left:auto;padding:3px 5px}
+.message.system .message-actions,.message.bot .message-actions{justify-content:center}
+.message.system .message-selection-label,.message.bot .message-selection-label{margin-left:0}
+@media(max-width:760px){.message-actions button{min-height:44px;padding:8px 11px}.message-interaction-hint{padding:10px 15px;font-size:12px}.message-actions{gap:8px}.message-selection-label{font-size:11px}}
+@media(prefers-reduced-motion:reduce){.message-actions button{transition:none}}

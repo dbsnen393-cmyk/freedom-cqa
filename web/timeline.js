@@ -72,7 +72,19 @@ export function mergeDataset(existing,incoming){
  const identity=m=>[m.role,m.sourceTimestamp||m.time,m.text];
  const unchanged=JSON.stringify(old.messages.map(identity))===JSON.stringify(c.messages.map(identity));
  if(unchanged){map.set(c.id,{...old,source:c.source,title:c.title,date:c.date,audioUrl:c.audioUrl,participants:c.participants,messages:c.messages,normalizedVersion:1,originTimestamp:c.originTimestamp});}
- else{map.set(c.id,{...c,previousAssessment:old.answers?{answers:old.answers,criteria:old.criteria,version:old.version}:old.previousAssessment,syncOffset:old.syncOffset||0,compressPauses:old.compressPauses||false,transcriptChanged:true});updated++;}
+ else{
+  const history=Array.isArray(old.assessmentHistory)?structuredClone(old.assessmentHistory):[];
+  let previousAssessment=old.previousAssessment?structuredClone(old.previousAssessment):undefined;
+  if(old.answers){
+   const assessmentId=old.assessment?.id||((old.demo?'demo:':'legacy:')+String(old.id)+':v'+String(old.version??0));
+   const snapshot={assessmentId,assessment:old.assessment?structuredClone(old.assessment):{id:assessmentId,provider:old.demo?'demo':'legacy',model:null,createdAt:null},answers:structuredClone(old.answers),finalAnswers:structuredClone(old.finalAnswers||old.answers),criteria:structuredClone(old.criteria||[]),version:old.version,sourceFingerprint:old.sourceFingerprint??null,checklistFingerprint:old.checklistFingerprint??null,createdAt:old.assessment?.createdAt??null,archivedAt:new Date().toISOString(),archiveReason:'Изменился исходный транскрипт'};
+   // The application supplies effective finalAnswers before merging; fall back to originals for legacy callers.
+   history.push(snapshot);previousAssessment=structuredClone(snapshot);
+  }
+  map.set(c.id,{...c,answers:null,assessmentHistory:history.slice(-20),previousAssessment,syncOffset:old.syncOffset||0,compressPauses:old.compressPauses||false,transcriptChanged:true});updated++;
+ }
  }
  return {conversations:[...map.values()],added,updated};
 }
+
+

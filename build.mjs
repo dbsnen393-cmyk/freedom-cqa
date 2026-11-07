@@ -4,11 +4,12 @@ const root=new URL('./',import.meta.url);
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml'};
 const assets={};
 for(const name of await readdir(new URL('web/',root))){const ext=name.slice(name.lastIndexOf('.'));if(!types[ext])continue;assets['/'+name]={body:await readFile(new URL('web/'+name,root),'utf8'),type:types[ext]};}
-const modules=['domain.js','timeline.js','privacy.js','preprocess.js'];
+const modules=['web/domain.js','web/timeline.js','web/privacy.js','web/preprocess.js','worker/assessment.mjs'];
 const resolveImports=source=>source.replace(/import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"];?/g,(_all,names,path)=>'const {'+names+'}=BUNDLED_MODULES['+JSON.stringify(basename(path))+'];');
 let bundled='const BUNDLED_MODULES={};\n';
-for(const name of modules){
- let source=await readFile(new URL('web/'+name,root),'utf8');
+for(const path of modules){
+ const name=basename(path);
+ let source=await readFile(new URL(path,root),'utf8');
  const exports=[...source.matchAll(/export\s+(?:async\s+)?(?:function|const|let|class)\s+(\w+)/g)].map(m=>m[1]);
  source=resolveImports(source).replace(/\bexport\s+/g,'');
  bundled+='BUNDLED_MODULES['+JSON.stringify(name)+']=(()=>{\n'+source+'\nreturn {'+exports.join(',')+'};})();\n';
@@ -22,4 +23,4 @@ delete manifest.static;
 await writeFile(new URL('.openai/hosting.json',root),JSON.stringify(manifest,null,2)+'\n');
 await mkdir(new URL('dist/.openai/',root),{recursive:true});
 await writeFile(new URL('dist/.openai/hosting.json',root),JSON.stringify(manifest,null,2)+'\n');
-console.log('Worker bundle built with '+Object.keys(assets).length+' assets and shared preprocessing; secrets stay in environment.');
+console.log('Worker bundle built with '+Object.keys(assets).length+' assets and server-side assessment; secrets stay in environment.');

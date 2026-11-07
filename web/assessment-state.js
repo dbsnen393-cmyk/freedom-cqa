@@ -55,8 +55,14 @@ function validateResult(conversation,result,appeals){
  * then returns the same conversation. Validation/cloning finish before any mutation.
  * History retains at most 20 old runs, with original and final answers at replacement time.
  */
-export function installAssessment(conversation,result,appeals=[]){
+export function installAssessment(conversation,result,appeals=[],activeChecklist){
  const next=validateResult(conversation,result,appeals);
+ if(activeChecklist!==undefined){
+  // Compare semantic/scoring fields in a stable order: UI objects and prepared
+  // snapshots may serialize properties in different orders. Old history stays valid.
+  const signature=criteria=>JSON.stringify(criteria.map(c=>[c.id,c.title,c.description,c.type,c.weight,c.type==='scale'?c.scale:[],c.allowNA,c.naRule||'']));
+  if(!record(activeChecklist)||!Array.isArray(activeChecklist.criteria)||activeChecklist.version!==next.version||signature(activeChecklist.criteria)!==signature(next.criteria))throw new TypeError('Активный чек-лист изменился во время запроса. Оценка не сохранена; запустите оценку по текущей версии.');
+ }
  if(conversation.assessment?.id===next.assessment.id){
   const current=[conversation.answers,conversation.criteria,conversation.version,conversation.sourceFingerprint,conversation.checklistFingerprint];
   const incoming=[next.answers,next.criteria,next.version,next.sourceFingerprint,next.checklistFingerprint];

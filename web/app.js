@@ -364,7 +364,7 @@ async function runTestAssessment(c,options){
   const result=await createTestAssessment(c,rules,version,options);
   const current=data.conversations.find(item=>item.id===c.id);
   if(!current||!isTestConversation(current)||assessmentIdentity(current)!==identity||preprocessingKey(current,rules,version)!==key)throw Error('Учебный диалог изменился. Откройте актуальную копию.');
-  installAssessment(current,result,data.appeals);
+  installAssessment(current,result,data.appeals,{criteria:data.criteria,version:data.version});
   data.activeDataset='TEST';detailTab='assessment';const saved=save();
   if(route!=='dialog/'+encodeURIComponent(c.id))openDialog(current);else render();
   if(saved)notify('Учебный результат сохранён. GPT не вызывался. Можно проверить апелляцию.');
@@ -388,7 +388,7 @@ async function runAssessment(c){
   const current=data.conversations.find(item=>item.id===c.id);
   if(!current||preprocessingKey(current,rules,version)!==sourceKey||assessmentIdentity(current)!==identity)throw Error('Диалог или его оценка изменились во время запроса. Новый результат не применён.');
   if(result.sourceFingerprint!==prepared.report.sourceFingerprint||result.checklistFingerprint!==prepared.report.checklistFingerprint)throw Error('Ответ не соответствует отправленному диалогу и чек-листу. Оценка не сохранена.');
-  installAssessment(current,result,data.appeals);save();
+  installAssessment(current,result,data.appeals,{criteria:data.criteria,version:data.version});save();
   if(route==='dialog/'+encodeURIComponent(c.id))detailTab='assessment';
   savedNotice('Оценка GPT по чек-листу v'+version+' сохранена. Проверьте основания по каждому критерию.');
  }catch(error){aiErrors.set(c.id,error.name==='TimeoutError'?'Ожидание завершилось. Автоматический повтор не запускался.':error.message||'Не удалось получить оценку.');}

@@ -141,7 +141,7 @@ export async function compareReferences(conversations,references,appeals=[],{mod
   if(reference.sourceFingerprint!==referenceContext.report.sourceFingerprint){skip(row,'stale_reference');continue;}
   if(reference.checklistFingerprint!==referenceContext.report.checklistFingerprint){skip(row,'checklist_mismatch');continue;}
   if(!conversation.answers){skip(row,'no_assessment');continue;}
-  if(scope==='production'?provider!=='openai':provider!=='fixture'){skip(row,'unsupported_provenance');continue;}
+  if(scope==='production'?!['openai','gemini','groq'].includes(provider):provider!=='fixture'){skip(row,'unsupported_provenance');continue;}
   try{currentContext=await prepared(conversation,conversation.criteria,conversation.version);}catch{skip(row,'invalid_assessment');continue;}
   if(reference.version!==conversation.version||reference.checklistFingerprint!==currentContext.report.checklistFingerprint){skip(row,'checklist_mismatch');continue;}
   if(conversation.sourceFingerprint!==currentContext.report.sourceFingerprint){skip(row,'stale_assessment');continue;}

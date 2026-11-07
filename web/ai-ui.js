@@ -1,6 +1,6 @@
-/** OpenAI connection controls. Secrets stay in the password field until submitted to this server. */
+/** Gemini connection controls. Secrets stay in the password field until submitted to this server. */
 export function createAIControls({h,icon,btn,tag,modal,notify,onConfigChange}){
- let state={loaded:false,configured:false,model:'gpt-5.4',localConfiguration:false,csrfToken:null,verified:false,verifiedAt:null,error:null};
+ let state={loaded:false,configured:false,provider:'gemini',model:'gemini-3.5-flash-lite',localConfiguration:false,csrfToken:null,verified:false,verifiedAt:null,error:null};
  let pendingLoad=null,settingsPanel=null;
  const panels=new Set();
  const safeMessage=(value,fallback)=>{
@@ -22,7 +22,7 @@ export function createAIControls({h,icon,btn,tag,modal,notify,onConfigChange}){
  function applyConfig(payload){
   const value=payload?.config&&typeof payload.config==='object'?payload.config:payload;
   if(!value||typeof value!=='object'||typeof value.configured!=='boolean')throw new Error('Сервер не вернул состояние подключения.');
-  state={...state,loaded:true,configured:value.configured,model:typeof value.model==='string'?value.model:state.model,localConfiguration:typeof value.localConfiguration==='boolean'?value.localConfiguration:state.localConfiguration,csrfToken:typeof value.csrfToken==='string'?value.csrfToken:state.csrfToken,verified:value.verified===true,verifiedAt:typeof value.verifiedAt==='string'?value.verifiedAt:null,error:null};
+  state={...state,loaded:true,configured:value.configured,provider:['groq','gemini','openai'].includes(value.provider)?value.provider:state.provider,model:typeof value.model==='string'?value.model:state.model,localConfiguration:typeof value.localConfiguration==='boolean'?value.localConfiguration:state.localConfiguration,csrfToken:typeof value.csrfToken==='string'?value.csrfToken:state.csrfToken,verified:value.verified===true,verifiedAt:typeof value.verifiedAt==='string'?value.verifiedAt:null,error:null};
   if(!state.configured){state.verified=false;state.verifiedAt=null;}
  }
  async function request(path,{method='GET',body,timeout=30000}={}){
@@ -36,13 +36,13 @@ export function createAIControls({h,icon,btn,tag,modal,notify,onConfigChange}){
  }
  async function loadConfig(){
   if(pendingLoad)return pendingLoad;
-  pendingLoad=(async()=>{try{applyConfig(await request('/api/ai/config'));}catch(error){state={...state,loaded:true,error:safeMessage(error,'Не удалось загрузить настройки GPT.')};}finally{pendingLoad=null;changed();}return {...state};})();
+  pendingLoad=(async()=>{try{applyConfig(await request('/api/ai/config'));}catch(error){state={...state,loaded:true,error:safeMessage(error,'Не удалось загрузить настройки ИИ.')};}finally{pendingLoad=null;changed();}return {...state};})();
   return pendingLoad;
  }
  const stateText=()=>!state.loaded?'Загрузка подключения':state.error?'Подключение не проверено':!state.configured?'Ключ не добавлен':state.verified?'Доступ проверен':'Ключ сохранён · доступ не проверен';
  function settings(){
   if(settingsPanel?.isConnected)return;
-  modal('Подключение GPT',controls=>{
+  modal('Подключение ИИ',controls=>{
    const panel=h('div',{class:'ai-settings-shell'},h('div',{class:'modal-content ai-settings'},h('p',{role:'status','aria-live':'polite'},'Загрузка настроек подключения…'),h('div',{class:'modal-actions'},btn('Отмена',null,controls.close))));
    settingsPanel=panel;
    loadConfig().then(()=>{
@@ -63,8 +63,8 @@ export function createAIControls({h,icon,btn,tag,modal,notify,onConfigChange}){
    let saving=false,verifying=false;
    const verifyButton=btn('Проверить доступ','shield',verify,'button');
    verifyButton.removeAttribute('aria-label');
-   const modelInput=state.localConfiguration?h('input',{id:'ai-model-input',name:'model',type:'text',value:state.model||'gpt-5.4',required:true,maxlength:100,autocomplete:'off',autocapitalize:'none',spellcheck:'false'}):null;
-   const keyInput=state.localConfiguration?h('input',{id:'ai-api-key-input',name:'apiKey',type:'password',value:'',required:!state.configured,maxlength:512,autocomplete:'off',autocapitalize:'none',spellcheck:'false',placeholder:state.configured?'Оставьте пустым, чтобы сохранить текущий ключ':'Вставьте ключ OpenAI API','aria-describedby':'ai-key-help'}):null;
+   const modelInput=state.localConfiguration?h('input',{id:'ai-model-input',name:'model',type:'text',value:state.model||'gemini-3.5-flash-lite',required:true,maxlength:100,autocomplete:'off',autocapitalize:'none',spellcheck:'false'}):null;
+   const keyInput=state.localConfiguration?h('input',{id:'ai-api-key-input',name:'apiKey',type:'password',value:'',required:!state.configured,maxlength:512,autocomplete:'off',autocapitalize:'none',spellcheck:'false',placeholder:state.configured?'Оставьте пустым, чтобы сохранить текущий ключ':'Вставьте ключ '+(state.provider==='groq'?'Groq':'Gemini')+' API','aria-describedby':'ai-key-help'}):null;
    const saveButton=state.localConfiguration?h('button',{type:'submit',class:'button primary'},icon('check',17),'Сохранить подключение'):null;
    const disable=value=>{if(saveButton)saveButton.disabled=value;if(modelInput)modelInput.disabled=value;if(keyInput)keyInput.disabled=value;verifyButton.disabled=value||!state.configured;};
    const clearFeedback=()=>{error.hidden=true;error.textContent='';resultNote.hidden=true;resultNote.textContent='';};
@@ -91,8 +91,8 @@ export function createAIControls({h,icon,btn,tag,modal,notify,onConfigChange}){
    const form=h('form',{class:'modal-content ai-settings',onSubmit:async event=>{
     event.preventDefault();if(saving||verifying)return;
     clearFeedback();const apiKey=keyInput.value.trim(),model=modelInput.value.trim();
-    if(!state.configured&&!apiKey)return showError('Добавьте API-ключ OpenAI.');
-    if(!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$/.test(model))return showError('Укажите точное имя модели, например gpt-5.4.');
+    if(!state.configured&&!apiKey)return showError('Добавьте API-ключ '+(state.provider==='groq'?'Groq':'Gemini')+'.');
+    if(!(state.provider==='groq'?/^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$/:/^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$/).test(model))return showError('Укажите точное имя модели, например gemini-3.5-flash-lite.');
     if(!state.csrfToken)return showError('Сессия настройки устарела. Закройте окно и откройте его снова.');
     saving=true;disable(true);saveButton.textContent='Сохранение…';resultNote.textContent='Сохраняем подключение…';resultNote.hidden=false;
     try{
@@ -102,25 +102,25 @@ export function createAIControls({h,icon,btn,tag,modal,notify,onConfigChange}){
      if(response?.config||typeof response?.configured==='boolean')applyConfig(response);else applyConfig(await request('/api/ai/config'));
      keyInput.required=!state.configured;keyInput.placeholder='Оставьте пустым, чтобы сохранить текущий ключ';modelInput.value=state.model;
      updateStatus();changed();resultNote.textContent='Подключение сохранено на сервере. Можно проверить доступ или перейти к оценке диалога.';resultNote.hidden=false;
-     if(typeof notify==='function')notify('Настройки GPT сохранены. Ключ не хранится в браузере.');
+     if(typeof notify==='function')notify('Настройки ИИ сохранены. Ключ не хранится в браузере.');
     }catch(failure){resultNote.hidden=true;showError(safeMessage(failure,'Не удалось сохранить подключение.'));}
     finally{saving=false;disable(false);saveButton.replaceChildren(icon('check',17),'Сохранить подключение');}
    }},status,h('p',{class:'ai-settings-help'},'Ключ передаётся только серверу этого сервиса. Он не включается в экспорт и не сохраняется в браузере.'),
-    h('label',{class:'form-label',for:'ai-api-key-input'},'Ключ OpenAI API'),keyInput,h('p',{id:'ai-key-help',class:'ai-field-help'},state.configured?'Текущий ключ скрыт. Заполните поле, только если хотите заменить его.':'Создайте ключ в своём аккаунте OpenAI и вставьте его сюда.'),
+    h('label',{class:'form-label',for:'ai-api-key-input'},'Ключ '+(state.provider==='groq'?'Groq':'Gemini')+' API'),keyInput,h('p',{id:'ai-key-help',class:'ai-field-help'},state.configured?'Текущий ключ скрыт. Заполните поле, только если хотите заменить его.':'Создайте ключ в своём аккаунте '+(state.provider==='groq'?'Groq':'Gemini')+' и вставьте его сюда.'),
     h('label',{class:'form-label',for:'ai-model-input'},'Модель'),modelInput,h('p',{class:'ai-field-help'},'Укажите точное имя модели, доступной вашему API-ключу.'),
     error,resultNote,h('div',{class:'ai-settings-verify'},verifyButton,h('span',{},'Проверка доступа не оценивает разговоры.')),h('div',{class:'modal-actions'},btn('Закрыть',null,close),saveButton));
    disable(false);return form;
  }
  function statusButton(){
-  const text=!state.loaded?'GPT: подключение…':state.error?'GPT: настройки':!state.configured?'Подключить GPT':state.verified?'GPT: доступ проверен':'GPT: ключ сохранён';
+  const text=!state.loaded?'ИИ: подключение…':state.error?'ИИ: настройки':!state.configured?'Подключить ИИ':state.verified?'ИИ: доступ проверен':'ИИ: ключ сохранён';
   return btn(text,'spark',settings,'ai-status-button '+(state.verified?'is-verified':state.configured?'is-configured':''));
  }
  function renderActionPanel(c,{busy=false,error=null,onAssess}={}){
   const configured=state.loaded&&state.configured&&!state.error;
-  const action=btn(busy?'GPT оценивает диалог…':configured?(c.answers?'Оценить повторно':'Оценить через GPT'):'Подключить GPT','spark',()=>{if(busy)return;if(configured){if(typeof onAssess==='function')onAssess();}else settings();},'button primary ai-assess-button');
+  const action=btn(busy?'ИИ оценивает диалог…':configured?(c.answers?'Оценить повторно':'Оценить через ИИ'):'Подключить ИИ','spark',()=>{if(busy)return;if(configured){if(typeof onAssess==='function')onAssess();}else settings();},'button primary ai-assess-button');
   action.disabled=busy||(configured&&typeof onAssess!=='function');
   const settingsButton=btn('Настройки','sliders',settings,'text-button');settingsButton.disabled=busy;
-  return h('section',{class:'ai-action-panel','aria-label':'Финальная оценка GPT','aria-busy':String(busy)},h('div',{class:'ai-action-heading'},h('div',{class:'ai-action-icon'},icon('spark',22)),h('div',{},h('h3',{},'Финальная оценка GPT'),h('p',{},configured?state.model:'Подключите ваш аккаунт OpenAI API')),settingsButton),
+  return h('section',{class:'ai-action-panel','aria-label':'Финальная оценка ИИ','aria-busy':String(busy)},h('div',{class:'ai-action-heading'},h('div',{class:'ai-action-icon'},icon('spark',22)),h('div',{},h('h3',{},'Финальная оценка ИИ'),h('p',{},configured?state.model:'Подключите ваш аккаунт '+(state.provider==='groq'?'Groq':'Gemini')+' API')),settingsButton),
    h('div',{class:'ai-action-status'},tag(stateText(),state.verified?'green':state.configured?'amber':'neutral',state.verified?'check':'shield')),
    h('p',{class:'ai-action-description'},'Модель проверит весь подготовленный диалог по текущему чек-листу и обоснует каждый вывод ссылками на реплики.'),
    error?h('p',{class:'ai-action-error',role:'alert'},safeMessage(error,'Не удалось получить оценку.')):null,

@@ -1,3 +1,5 @@
+import {callGroq,GroqError} from './groq.mjs';
+import {callGemini,GeminiError} from './gemini.mjs';
 import {preprocessConversation} from '../web/preprocess.js';
 import {AIError,assessConversation,configuredAI,providerFailure} from './assessment.mjs';
 const datasetCache=new Map(), audioCache=new Map(), audioPending=new Map();
@@ -90,6 +92,8 @@ async function dialogueBody(request){
  return body;
 }
 export async function verifyAI(env={},options={}){
+ if(env.AI_PROVIDER==='groq'){try{return await callGroq(env,null,options,true);}catch(e){if(e instanceof GroqError)throw new AIError(e.code,e.message,e.status);throw e;}}
+ if(env.AI_PROVIDER!=='openai'){try{return await callGemini(env,null,options,true);}catch(e){if(e instanceof GeminiError)throw new AIError(e.code,e.message,e.status);throw e;}}
  const key=typeof env.OPENAI_API_KEY==='string'?env.OPENAI_API_KEY.trim():'';
  if(!key)throw new AIError('OPENAI_NOT_CONFIGURED','Добавьте API-ключ OpenAI в настройках подключения.',503);
  const config=configuredAI(env);if(!config.configured)throw new AIError('INVALID_MODEL','Проверьте название модели в настройках подключения.',400);

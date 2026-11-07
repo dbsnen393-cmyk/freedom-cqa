@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {configuredAI,buildAssessmentRequest,validateAssessment,assessConversation,AIError,DEFAULT_OPENAI_MODEL} from '../worker/assessment.mjs';
 import {preprocessConversation} from '../web/preprocess.js';
 import {initialCriteria} from '../web/domain.js';
-const env={OPENAI_API_KEY:'test-key-never-live',OPENAI_MODEL:'gpt-5.4'};
+const env={AI_PROVIDER:'openai',OPENAI_API_KEY:'test-key-never-live',OPENAI_MODEL:'gpt-5.4'};
 const rules=()=>structuredClone(initialCriteria);
 const conversation=()=>({id:'test-ai-001',language:'RU',channel:'agent chat',criteria:rules(),version:1,messages:[{id:1,role:'client',time:'00:00',text:'Где посмотреть тариф? Моя почта private.person@example.com.'},{id:2,role:'operator',time:'00:10',text:'Здравствуйте! Меня зовут Алия. Откройте раздел тарифов.'},{id:3,role:'client',time:'00:20',text:'Нашла, спасибо.'},{id:4,role:'operator',time:'00:30',text:'Всего доброго!'}]});
 async function packet(criteria=rules()){return (await preprocessConversation(conversation(),criteria,1)).packet;}
@@ -12,7 +12,7 @@ function responseFor(raw=fullAnswers(),overrides={}){return Response.json({id:'r
 function safeError(code,status){return error=>{assert.ok(error instanceof AIError);assert.equal(error.code,code);assert.equal(error.status,status);assert.ok(!error.message.includes(env.OPENAI_API_KEY));return true;};}
 
 test('AI status exposes configuration and selected model without the API key',()=>{
- assert.equal(configuredAI({}).configured,false);assert.equal(configuredAI({}).model,DEFAULT_OPENAI_MODEL);
+ assert.equal(configuredAI({}).configured,false);assert.equal(configuredAI({}).model,'gemini-3.5-flash-lite');
  const result=configuredAI(env);assert.equal(result.configured,true);assert.equal(result.provider,'openai');assert.ok(!JSON.stringify(result).includes(env.OPENAI_API_KEY));
  assert.equal(configuredAI({...env,OPENAI_MODEL:'https://attacker.invalid'}).configured,false);
 });
@@ -63,7 +63,7 @@ test('A customized checklist controls output schema and final score without hard
 });
 test('Missing key, invalid model and invalid transcript fail before any provider call',async()=>{
  let calls=0;const fetcher=async()=>{calls++;return responseFor();};
- await assert.rejects(assessConversation(conversation(),rules(),1,{}, {fetcher}),safeError('OPENAI_NOT_CONFIGURED',503));
+ await assert.rejects(assessConversation(conversation(),rules(),1,{}, {fetcher}),safeError('GEMINI_NOT_CONFIGURED',503));
  await assert.rejects(assessConversation(conversation(),rules(),1,{...env,OPENAI_MODEL:'bad model'}, {fetcher}),safeError('INVALID_MODEL',400));
  const bad=conversation();bad.messages[1].role='assistant';await assert.rejects(assessConversation(bad,rules(),1,env,{fetcher}),safeError('PREPROCESS_BLOCKED',422));assert.equal(calls,0);
 });

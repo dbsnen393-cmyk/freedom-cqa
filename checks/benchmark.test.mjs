@@ -187,3 +187,10 @@ test('Different versions of the same criterion remain separate in per-criterion 
  const report=await compareReferences([first,second],[a,b]);
  assert.equal(report.coverage.compared,2);assert.equal(report.criteria.length,4);assert.deepEqual([...new Set(report.criteria.map(c=>c.version))],[1,2]);
 });
+
+test('Production comparison accepts Groq and preserves Gemini/OpenAI eligibility',async()=>{
+ for(const provider of ['groq','gemini','openai']){
+  const c=await assessed({assessment:{provider}}),r=await reference(c),report=await compareReferences([c],[r]);
+  assert.equal(report.coverage.compared,1);assert.equal(report.metrics.criteria.accuracy,1);assert.equal(report.rows[0].provider,provider);
+ }
+});

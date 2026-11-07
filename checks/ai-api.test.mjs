@@ -5,7 +5,7 @@ import {AIError} from '../worker/assessment.mjs';
 
 const BASE='http://localhost:4173';
 const KEY='sk-fixture-never-use-live';
-const ENV={OPENAI_API_KEY:KEY,OPENAI_MODEL:'gpt-5.4'};
+const ENV={AI_PROVIDER:'openai',OPENAI_API_KEY:KEY,OPENAI_MODEL:'gpt-5.4'};
 const criteria=[{id:'contact',title:'Контакт',description:'Оператор поздоровался.',weight:100,type:'boolean',scale:[],allowNA:false,naRule:''}];
 const conversation={id:'api-dialogue',channel:'agent chat',language:'RU',messages:[{id:1,role:'client',time:'00:00',text:'Здравствуйте, моя почта client@example.com'},{id:2,role:'operator',time:'00:05',text:'Здравствуйте! Чем могу помочь?'}]};
 const body=()=>({conversation:structuredClone(conversation),criteria:structuredClone(criteria),checklistVersion:2});
@@ -31,7 +31,7 @@ test('Assessment uses current dialogue and criteria, masks data and returns dete
 
 test('Missing key and invalid preparation never call a provider',async()=>{
  let calls=0;const options={fetcher:async()=>{calls++;throw new Error('Unexpected provider request');}};
- await error(await handleApi(post('/api/assess'),{},options),503,'OPENAI_NOT_CONFIGURED');
+ await error(await handleApi(post('/api/assess'),{},options),503,'GEMINI_NOT_CONFIGURED');
  const invalid=body();invalid.conversation.messages[1].role='unknown';await error(await handleApi(post('/api/assess',invalid),ENV,options),422,'PREPROCESS_BLOCKED');
  await error(await handleApi(post('/api/assess'),{...ENV,OPENAI_MODEL:'bad model'},options),400,'INVALID_MODEL');
  assert.equal(calls,0);
@@ -80,7 +80,7 @@ test('Verification validates method, origin, model and configuration before netw
  let calls=0;const options={fetcher:async()=>{calls++;return Response.json({});}};
  await error(await handleApi(new Request(BASE+'/api/ai/verify'),ENV,options),405,'METHOD_NOT_ALLOWED');
  await error(await handleApi(post('/api/ai/verify',{}, {Origin:'https://evil.invalid'}),ENV,options),403,'ORIGIN_REJECTED');
- await error(await handleApi(post('/api/ai/verify',{}),{},options),503,'OPENAI_NOT_CONFIGURED');
+ await error(await handleApi(post('/api/ai/verify',{}),{},options),503,'GEMINI_NOT_CONFIGURED');
  await error(await handleApi(post('/api/ai/verify',{}),{...ENV,OPENAI_MODEL:'bad model'},options),400,'INVALID_MODEL');assert.equal(calls,0);
 });
 

@@ -4,7 +4,7 @@ const root=new URL('./',import.meta.url);
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml'};
 const assets={};
 for(const name of await readdir(new URL('web/',root))){const ext=name.slice(name.lastIndexOf('.'));if(!types[ext])continue;assets['/'+name]={body:await readFile(new URL('web/'+name,root),'utf8'),type:types[ext]};}
-const modules=['web/domain.js','web/timeline.js','web/privacy.js','web/preprocess.js','worker/assessment.mjs'];
+const modules=['web/domain.js','web/timeline.js','web/privacy.js','web/preprocess.js','worker/gemini.mjs','worker/groq.mjs','worker/assessment.mjs'];
 const resolveImports=source=>source.replace(/import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"];?/g,(_all,names,path)=>'const {'+names+'}=BUNDLED_MODULES['+JSON.stringify(basename(path))+'];');
 let bundled='const BUNDLED_MODULES={};\n';
 for(const path of modules){

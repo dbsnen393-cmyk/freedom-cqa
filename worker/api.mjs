@@ -1,3 +1,6 @@
+import {resolveAIProvider,INVALID_PROVIDER_MESSAGE} from './provider-config.mjs';
+import {callGroq,GroqError} from './groq.mjs';
+import {callGemini,GeminiError} from './gemini.mjs';
 import {preprocessConversation} from '../web/preprocess.js';
 import {AIError,assessConversation,configuredAI,providerFailure} from './assessment.mjs';
 const datasetCache=new Map(), audioCache=new Map(), audioPending=new Map();
@@ -90,6 +93,9 @@ async function dialogueBody(request){
  return body;
 }
 export async function verifyAI(env={},options={}){
+ const provider=resolveAIProvider(env);if(!provider)throw new AIError('INVALID_PROVIDER',INVALID_PROVIDER_MESSAGE,400);
+ if(provider==='groq'){try{return await callGroq(env,null,options,true);}catch(e){if(e instanceof GroqError)throw new AIError(e.code,e.message,e.status);throw e;}}
+ if(provider==='gemini'){try{return await callGemini(env,null,options,true);}catch(e){if(e instanceof GeminiError)throw new AIError(e.code,e.message,e.status);throw e;}}
  const key=typeof env.OPENAI_API_KEY==='string'?env.OPENAI_API_KEY.trim():'';
  if(!key)throw new AIError('OPENAI_NOT_CONFIGURED','Добавьте API-ключ OpenAI в настройках подключения.',503);
  const config=configuredAI(env);if(!config.configured)throw new AIError('INVALID_MODEL','Проверьте название модели в настройках подключения.',400);
@@ -112,7 +118,8 @@ export async function handleApi(request,env={},options={}){
  if(origin!==null&&origin!==url.origin)return apiError('ORIGIN_REJECTED','Недопустимый источник запроса.',403);
  if(url.pathname==='/api/ai/config'){
   if(!['GET','HEAD'].includes(request.method))return apiError('LOCAL_SETTINGS_REQUIRED','Изменить подключение можно в локальной версии сервиса.',405);
-  return jsonResponse({localConfiguration:false,...configuredAI(env)});
+  const config=configuredAI(env);if(config.code==='INVALID_PROVIDER')return apiError('INVALID_PROVIDER',INVALID_PROVIDER_MESSAGE,400);
+  return jsonResponse({localConfiguration:false,...config});
  }
  if(url.pathname==='/api/ai/verify'){
   if(request.method!=='POST')return apiError('METHOD_NOT_ALLOWED','Используйте POST для проверки подключения.',405);

@@ -85,7 +85,7 @@ export async function createTestAssessment(conversation,criteria=conversation?.c
  const operatorIds=source.messages.filter(message=>message.role==='operator').map(message=>message.id);
  const answers=Object.fromEntries(cleanCriteria.map((rule,index)=>{
   const value=selectedValues[rule.id],ids=own(customEvidence,rule.id)?customEvidence[rule.id]:[operatorIds[index%operatorIds.length]];
-  return [rule.id,{value,reason:'Учебный синтетический ответ: задано «'+valueLabel(value)+'». Реплики выбраны для проверки перехода к фрагментам; они не доказывают это значение. Смысл диалога не оценивался, GPT не вызывался.',evidence:ids,evidenceKind:value===null?'not_applicable':value===false?'absence':'present'}];
+  return [rule.id,{value,reason:'Учебный синтетический ответ: задано «'+valueLabel(value)+'». Реплики выбраны для проверки перехода к фрагментам; они не доказывают это значение. Смысл диалога не оценивался, ИИ не вызывался.',evidence:ids,evidenceKind:value===null?'not_applicable':value===false?'absence':'present'}];
  }));
  return {conversationId:source.id,testMode:true,answers,criteria:structuredClone(cleanCriteria),version:packet.checklist.version,sourceFingerprint:report.sourceFingerprint,checklistFingerprint:report.checklistFingerprint,finalScore:calculate(cleanCriteria,answers),critical:cleanCriteria.some(rule=>rule.type==='flag'&&answers[rule.id].value===true),assessment:{id:'fixture-'+crypto.randomUUID(),provider:'fixture',model:'offline-fixture',testMode:true,scenario:customValues===undefined?scenario:'custom',createdAt:new Date().toISOString()}};
 }

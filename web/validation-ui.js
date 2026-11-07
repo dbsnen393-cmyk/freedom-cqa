@@ -5,7 +5,7 @@ import {createTestConversation,createTestValues,TEST_SCENARIOS,isTestConversatio
 const UNSET='__UNLABELED__';
 const reasonLabels={
  excluded_scope:'Другой контур данных',missing_reference:'Нет эталона',no_assessment:'Нет оценки',
- unsupported_provenance:'Нет подтверждённой оценки GPT',stale_reference:'Эталон относится к прежнему транскрипту',
+ unsupported_provenance:'Нет подтверждённой оценки ИИ',stale_reference:'Эталон относится к прежнему транскрипту',
  stale_assessment:'Оценка относится к прежнему транскрипту',checklist_mismatch:'Версии чек-листа не совпадают',
  invalid_reference:'Некорректный эталон',invalid_assessment:'Неполная или некорректная оценка',
  duplicate_reference:'Несколько эталонов для одного диалога',missing_conversation:'Диалог не найден'
@@ -37,7 +37,7 @@ export function createValidationUI({h,icon,btn,tag,modal,notify,getData,save,ren
  const warning=()=>storageWarning?h('p',{class:'validation-storage-warning',role:'alert'},icon('alert'),storageWarning):null;
  const field=(label,id,node,help)=>h('div',{class:'validation-field'},h('label',{class:'form-label',for:id},label),node,help&&h('p',{class:'validation-help',id:id+'-help'},help));
  const plainLabel=value=>value===undefined?'Нет значения':valueLabel(value);
- const reasonLabel=reason=>reason==='unsupported_provenance'&&scope==='test'?'Нет учебной оценки без GPT':reasonLabels[reason]||reason;
+ const reasonLabel=reason=>reason==='unsupported_provenance'&&scope==='test'?'Нет учебной оценки без ИИ':reasonLabels[reason]||reason;
  const download=(value,name)=>{
   if(typeof downloadJSON==='function')return downloadJSON(value,name);
   const url=URL.createObjectURL(new Blob([JSON.stringify(value,null,2)],{type:'application/json'}));
@@ -67,7 +67,7 @@ export function createValidationUI({h,icon,btn,tag,modal,notify,getData,save,ren
  function referenceModal(conversation){
   const choices=conversation?[conversation]:candidates();
   modal(conversation?'Эталонная разметка':'Добавить эталон',({close,error,showError})=>{
-   if(!choices.length)return h('div',{class:'modal-content validation-modal'},h('p',{class:'modal-description'},scope==='test'?'Сначала создайте учебную копию диалога.':'Сначала загрузите реальные диалоги из API или JSON. Демопримеры не входят в проверку качества GPT.'),h('div',{class:'modal-actions'},btn('Закрыть',null,close)));
+   if(!choices.length)return h('div',{class:'modal-content validation-modal'},h('p',{class:'modal-description'},scope==='test'?'Сначала создайте учебную копию диалога.':'Сначала загрузите реальные диалоги из API или JSON. Демопримеры не входят в проверку качества ИИ.'),h('div',{class:'modal-actions'},btn('Закрыть',null,close)));
    let current=choices[0],criteria=[],version,values,busy=false;
    const select=h('select',{id:'reference-conversation'},choices.map((c,index)=>h('option',{value:index},`${sourceName(c)} · ${describe(c)}`)));
    const label=h('input',{id:'reference-label',type:'text',maxlength:160,value:'',placeholder:'Например: разметка проверяющего'});
@@ -80,7 +80,7 @@ export function createValidationUI({h,icon,btn,tag,modal,notify,getData,save,ren
     const existing=references().find(r=>r.conversationId===current.id&&r.source===current.source);
     label.value=existing?.label||'';
     values=valueFields(criteria,existing?.answers||{},'reference');fieldContainer.replaceChildren(values.node);
-    context.textContent=`${synthetic(current)?'Учебный эталон · не проверка качества GPT':'Ручной эталон для реального диалога'} · чек-лист v${version}.`;
+    context.textContent=`${synthetic(current)?'Учебный эталон · не проверка качества ИИ':'Ручной эталон для реального диалога'} · чек-лист v${version}.`;
    };
    select.addEventListener('change',updateFields);updateFields();
    return h('form',{class:'modal-content validation-modal',onSubmit:async event=>{
@@ -139,11 +139,11 @@ export function createValidationUI({h,icon,btn,tag,modal,notify,getData,save,ren
   });
  }
 
- function testBanner(){return h('div',{class:'validation-test-banner'},icon('shield',20),h('div',{},h('strong',{},'Учебный режим · без GPT · не оценка модели'),h('p',{},'Заданные вами значения проверяют работу интерфейса. Они не включаются в производственные метрики.')));}
+ function testBanner(){return h('div',{class:'validation-test-banner'},icon('shield',20),h('div',{},h('strong',{},'Учебный режим · без ИИ · не оценка модели'),h('p',{},'Заданные вами значения проверяют работу интерфейса. Они не включаются в производственные метрики.')));}
 
  function testModal(conversation){
   if(!conversation)return copyModal();
-  modal(isTestConversation(conversation)?'Учебная оценка без GPT':'Учебная копия и оценка',({close,error,showError})=>{
+  modal(isTestConversation(conversation)?'Учебная оценка без ИИ':'Учебная копия и оценка',({close,error,showError})=>{
    const criteria=structuredClone(getData().criteria),version=getData().version;
    let current=isTestConversation(conversation)?conversation:null,busy=false;
    const scenario=h('select',{id:'test-scenario'},TEST_SCENARIOS.map(s=>h('option',{value:s.id},s.label)));
@@ -155,7 +155,7 @@ export function createValidationUI({h,icon,btn,tag,modal,notify,getData,save,ren
     event.preventDefault();if(busy)return;
     let answers;try{answers=values.read();}catch(failure){return showError(failure.message);}
     if(getData().version!==version||JSON.stringify(getData().criteria)!==JSON.stringify(criteria))return showError('Чек-лист изменился. Закройте окно и заново откройте учебную оценку.');
-    busy=true;submit.disabled=true;scenario.disabled=true;values.disable(true);submit.textContent='Применяем значения…';status.textContent='Выполняется локально, без запроса к GPT.';
+    busy=true;submit.disabled=true;scenario.disabled=true;values.disable(true);submit.textContent='Применяем значения…';status.textContent='Выполняется локально, без запроса к ИИ.';
     try{
      if(!current){current=createTestConversation(conversation);getData().conversations.push(current);getData().activeDataset='TEST';saveChanges();}
      const result=await runTestAssessment(current,{scenario:scenario.value,values:answers});
@@ -221,8 +221,8 @@ export function createValidationUI({h,icon,btn,tag,modal,notify,getData,save,ren
     metric('Ошибка балла · MAE',formatScore(metrics.totals.mae),`По ${metrics.totals.compared} итоговым баллам · шкала 0–100`,'scale'),
     metric('Покрытие сравнения',percent(coverageRate),`${coverage.compared} / ${denominator} диалогов выбранного контура`,'chats')),
    h('section',{class:'card validation-report-card'},h('div',{class:'validation-section-heading'},h('div',{},h('h2',{},'Совпадения по критериям'),h('p',{},'Точное значение и применимость считаются отдельно. N/A совпадает только с явным N/A.')),
-    tag(scope==='test'?'Учебные результаты':'Реальные оценки GPT',scope==='test'?'amber':'green')),
-    report.criteria.length||report.flags.length?criterionTable([...report.criteria,...report.flags]):h('div',{class:'validation-empty'},icon('scale',30),h('h3',{},'Пока нет сопоставимых оценок'),h('p',{},scope==='test'?'Создайте учебную копию, задайте оценку и добавьте её эталон.':'Добавьте эталон для реального диалога с сохранённой оценкой GPT.')),
+    tag(scope==='test'?'Учебные результаты':'Реальные оценки ИИ',scope==='test'?'amber':'green')),
+    report.criteria.length||report.flags.length?criterionTable([...report.criteria,...report.flags]):h('div',{class:'validation-empty'},icon('scale',30),h('h3',{},'Пока нет сопоставимых оценок'),h('p',{},scope==='test'?'Создайте учебную копию, задайте оценку и добавьте её эталон.':'Добавьте эталон для реального диалога с сохранённой оценкой ИИ.')),
     h('div',{class:'validation-critical-summary'},h('strong',{},'Явные значения N/A'),h('span',{},`В эталоне: ${criteria.expectedNA} · в оценке: ${criteria.candidateNA} · совпало: ${criteria.naMatches}`)),
     h('div',{class:'validation-critical-summary'},h('strong',{},'Критический флаг'),h('span',{},`${flags.matches} / ${flags.compared} совпадений · ${percent(flags.accuracy)}`),h('span',{},`Ложных срабатываний: ${flags.falsePositive} · пропусков: ${flags.falseNegative}`)),
     h('p',{class:'validation-method'},'Точность критериев не включает критические флаги — они показаны отдельно. MAE — средняя абсолютная разница итоговых баллов. ',metrics.totals.excludedAllNA?`Диалогов без применимых баллов: ${metrics.totals.excludedAllNA}; они не входят в MAE.`:'При отсутствии применимых баллов ошибка не вычисляется.')),
@@ -236,7 +236,7 @@ export function createValidationUI({h,icon,btn,tag,modal,notify,getData,save,ren
 
  function offlineSection(){
   const copies=testConversations();
-  return h('section',{class:'card validation-offline'},h('div',{class:'validation-section-heading'},h('div',{},h('div',{class:'eyebrow'},'ПРОВЕРКА ПРОЦЕССА'),h('h2',{},'Учебный стенд без GPT'),h('p',{},'Проверка оценки, доказательств, истории и апелляции на отдельной копии TEST.')),btn('Создать учебную копию','plus',copyModal)),
+  return h('section',{class:'card validation-offline'},h('div',{class:'validation-section-heading'},h('div',{},h('div',{class:'eyebrow'},'ПРОВЕРКА ПРОЦЕССА'),h('h2',{},'Учебный стенд без ИИ'),h('p',{},'Проверка оценки, доказательств, истории и апелляции на отдельной копии TEST.')),btn('Создать учебную копию','plus',copyModal)),
    testBanner(),h('ol',{class:'validation-steps'},h('li',{},h('strong',{},'Создайте копию'),h('span',{},'Отдельный диалог с источником TEST.')),h('li',{},h('strong',{},'Задайте значения'),h('span',{},'Выберите сценарий и значения критериев.')),h('li',{},h('strong',{},'Проверьте результат'),h('span',{},'Откройте доказательства и подайте апелляцию.'))),
    copies.length?h('div',{class:'validation-test-list'},copies.slice(-6).reverse().map(c=>h('div',{class:'validation-test-item'},h('div',{},h('strong',{},c.title||c.id),h('small',{},`${c.answers?'Учебная оценка готова':'Ожидает учебной оценки'} · ${c.id}`)),btn('Открыть','arrow',()=>openDialog(c),'text-button'))),copies.length>6&&h('p',{class:'validation-help'},`Показаны последние 6 из ${copies.length} копий. Все копии доступны в источнике TEST.`)):h('p',{class:'validation-offline-empty'},'Учебных копий пока нет. Для создания можно использовать любой загруженный диалог.'));
  }
@@ -244,7 +244,7 @@ export function createValidationUI({h,icon,btn,tag,modal,notify,getData,save,ren
  function page(){
   const report=h('div',{class:'validation-report','aria-busy':'true'}),reportStatus=h('p',{class:'validation-load-status',role:'status','aria-live':'polite'},'Сопоставляем эталоны и оценки…');
   const pageError=h('p',{class:'form-error',role:'alert',hidden:true,tabindex:-1});
-  const scopeSelect=h('select',{id:'validation-scope'},h('option',{value:'production'},'Реальные оценки GPT'),h('option',{value:'test'},'Учебные копии TEST'));
+  const scopeSelect=h('select',{id:'validation-scope'},h('option',{value:'production'},'Реальные оценки ИИ'),h('option',{value:'test'},'Учебные копии TEST'));
   const modeSelect=h('select',{id:'validation-mode'},h('option',{value:'original'},'Исходная оценка'),h('option',{value:'final'},'Итоговая с решениями апелляций'));
   scopeSelect.value=scope;modeSelect.value=mode;
   const referenceCount=h('span',{class:'validation-reference-count'});
@@ -254,7 +254,7 @@ export function createValidationUI({h,icon,btn,tag,modal,notify,getData,save,ren
    const request=++reportRequest;
    report.setAttribute('aria-busy','true');reportStatus.textContent='Сопоставляем эталоны и оценки…';
    referenceCount.textContent=`Эталонов в контуре: ${scopedReferences().length}`;exportButton.disabled=!scopedReferences().length;
-   scopeHelp.textContent=scope==='test'?'Учебный отчёт: только копии TEST. Заданные значения не измеряют качество GPT и не входят в производственные метрики.':'Производственный отчёт: реальные диалоги с оценкой GPT. TEST, DEMO и другие неподтверждённые оценки исключаются.';
+   scopeHelp.textContent=scope==='test'?'Учебный отчёт: только копии TEST. Заданные значения не измеряют качество ИИ и не входят в производственные метрики.':'Производственный отчёт: реальные диалоги с оценкой ИИ. TEST, DEMO и другие неподтверждённые оценки исключаются.';
    try{
     const data=getData(),list=scope==='test'?testConversations():data.conversations,result=await compareReferences(list,scopedReferences(),data.appeals||[],{mode,scope});
     if(request!==reportRequest||!report.isConnected)return;
@@ -276,8 +276,8 @@ export function createValidationUI({h,icon,btn,tag,modal,notify,getData,save,ren
    h('div',{class:'validation-page-heading'},h('div',{},h('h2',{},'Сравнение с эталоном'),h('p',{},'Независимая ручная разметка для проверки сохранённых оценок.')),manual),warning(),
    h('section',{class:'card validation-controls'},h('div',{class:'validation-control-row'},field('Контур сравнения','validation-scope',scopeSelect),field('Версия оценки','validation-mode',modeSelect)),scopeHelp,
     h('div',{class:'validation-tools'},btn('Импорт эталонов','upload',importModal),templateButton,exportButton,referenceCount),
-    h('p',{class:'validation-help'},'Эталон — независимая ручная разметка. Шаблон содержит незаполненные значения; оценки GPT в него не копируются.'),pageError),
-   h('div',{class:'validation-offline-entry'},h('div',{},h('strong',{},'Учебный стенд · без GPT'),h('p',{},'Проверка оценки и апелляции на копии TEST.')),btn('Создать учебную копию','plus',copyModal)),
+    h('p',{class:'validation-help'},'Эталон — независимая ручная разметка. Шаблон содержит незаполненные значения; оценки ИИ в него не копируются.'),pageError),
+   h('div',{class:'validation-offline-entry'},h('div',{},h('strong',{},'Учебный стенд · без ИИ'),h('p',{},'Проверка оценки и апелляции на копии TEST.')),btn('Создать учебную копию','plus',copyModal)),
    reportStatus,report,offlineSection());
   queueMicrotask(refresh);return pageNode;
  }

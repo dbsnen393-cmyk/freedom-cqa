@@ -1,9 +1,13 @@
+import {resolveAIProvider,INVALID_PROVIDER_MESSAGE} from './worker/provider-config.mjs';
+import {geminiConfig,DEFAULT_GEMINI_MODEL} from './worker/gemini.mjs';
+import {groqConfig,DEFAULT_GROQ_MODEL} from './worker/groq.mjs';
 import {randomBytes,timingSafeEqual} from 'node:crypto';
 import {readFile,open,rename,unlink} from 'node:fs/promises';
 import {resolve,dirname,basename,join} from 'node:path';
 
 const LIMIT=8*1024;
 const MODEL=/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,99}$/;
+const GROQ_MODEL=/^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$/;
 const LOOPBACK=new Set(['localhost','127.0.0.1','[::1]','::1']);
 class SetupError extends Error{constructor(status,message){super(message);this.status=status;}}
 const response=(body,status=200,extra={})=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...extra}});
@@ -12,7 +16,7 @@ function tokenMatches(actual,expected){
  const left=Buffer.from(actual,'utf8'),right=Buffer.from(expected,'utf8');
  return left.length===right.length&&timingSafeEqual(left,right);
 }
-async function bodyJson(request){
+async function bodyJson(request,provider){
  const declared=request.headers.get('Content-Length');
  if(declared!==null&&Number(declared)>LIMIT)throw new SetupError(413,'Слишком большой запрос настроек.');
  if(!/^application\/json(?:\s*;|\s*$)/i.test(request.headers.get('Content-Type')||''))throw new SetupError(400,'Ожидается JSON с настройками.');
@@ -25,21 +29,23 @@ async function bodyJson(request){
  let payload;try{payload=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}catch{throw new SetupError(400,'Не удалось прочитать JSON настроек.');}
  if(!payload||Array.isArray(payload)||typeof payload!=='object')throw new SetupError(400,'Ожидается объект настроек.');
  if(Object.keys(payload).some(key=>!['apiKey','model','removeKey'].includes(key)))throw new SetupError(400,'Неизвестное поле настроек.');
- if(typeof payload.model!=='string'||!MODEL.test(payload.model))throw new SetupError(400,'Укажите корректное имя модели.');
+ const validModel=typeof payload.model==='string'&&payload.model.trim()&&(provider==='gemini'?geminiConfig({GEMINI_API_KEY:'validation-only',GEMINI_MODEL:payload.model}).configured:(provider==='groq'?GROQ_MODEL:MODEL).test(payload.model));
+ if(!validModel)throw new SetupError(400,'Укажите корректное имя модели.');
  if(payload.apiKey!==undefined&&typeof payload.apiKey!=='string')throw new SetupError(400,'Ключ должен быть строкой.');
  if(payload.removeKey!==undefined&&typeof payload.removeKey!=='boolean')throw new SetupError(400,'Параметр удаления ключа должен быть логическим.');
  const apiKey=payload.apiKey?.trim()||'';
  if(apiKey&&(apiKey.length<20||apiKey.length>512||!/^[\x21-\x7e]+$/.test(apiKey)||/\*|\.{3}|<|>|(?:redacted|masked|your[_-]?(?:openai[_-]?)?(?:api[_-]?)?key|placeholder)/i.test(apiKey)))throw new SetupError(400,'Ключ должен быть полным, без пробелов и скрытых символов.');
  if(payload.removeKey&&apiKey)throw new SetupError(400,'Удаление и сохранение нового ключа нельзя выполнить одновременно.');
- return {model:payload.model,apiKey,removeKey:payload.removeKey===true};
+ return {model:payload.model.trim(),apiKey,removeKey:payload.removeKey===true};
 }
-function replaceSettings(original,apiKey,model){
+function replaceSettings(original,apiKey,model,provider){
  const hadBOM=original.startsWith('\uFEFF'),text=hadBOM?original.slice(1):original;
  const newline=text.includes('\r\n')?'\r\n':'\n';
  const lines=text.split(/\r?\n/);if(lines.at(-1)==='')lines.pop();
- const kept=lines.filter(line=>!/^\s*(?:export\s+)?(?:OPENAI_API_KEY|OPENAI_MODEL)\s*=/.test(line));
- if(apiKey)kept.push('OPENAI_API_KEY='+apiKey);
- kept.push('OPENAI_MODEL='+model);
+ const prefix=provider==='groq'?'GROQ':provider==='gemini'?'GEMINI':'OPENAI';
+ const kept=lines.filter(line=>!new RegExp('^\\s*(?:export\\s+)?'+prefix+'_(?:API_KEY|MODEL)\\s*=').test(line));
+ if(apiKey)kept.push(prefix+'_API_KEY='+apiKey);
+ kept.push(prefix+'_MODEL='+model);
  return (hadBOM?'\uFEFF':'')+kept.join(newline)+newline;
 }
 async function atomicWrite(filePath,text){
@@ -57,14 +63,19 @@ async function atomicWrite(filePath,text){
 export function createLocalSettings({env,envPath,token=randomBytes(32).toString('hex')}){
  if(!env||typeof env!=='object'||typeof envPath!=='string'||!envPath||typeof token!=='string'||!token)throw new TypeError('Некорректная конфигурация локальных настроек.');
  const filePath=resolve(envPath);let pending=Promise.resolve();
- const state=()=>({localConfiguration:true,configured:Boolean(env.OPENAI_API_KEY),model:env.OPENAI_MODEL||'gpt-5.4'});
- async function persist(settings){
-  const apiKey=settings.removeKey?'':settings.apiKey||(env.OPENAI_API_KEY||'');
+ const state=()=>{
+  const provider=resolveAIProvider(env),prefix=provider==='groq'?'GROQ':provider==='gemini'?'GEMINI':'OPENAI';
+  return {localConfiguration:true,provider,configured:provider==='groq'?groqConfig(env).configured:provider==='gemini'?geminiConfig(env).configured:Boolean(env[prefix+'_API_KEY']),model:env[prefix+'_MODEL']||(provider==='groq'?DEFAULT_GROQ_MODEL:provider==='gemini'?DEFAULT_GEMINI_MODEL:'gpt-5.4')};
+ };
+ async function persist(settings,provider){
+  const prefix=provider==='groq'?'GROQ':provider==='gemini'?'GEMINI':'OPENAI';
+  if(provider==='groq'&&!groqConfig({GROQ_API_KEY:'validation-only',GROQ_MODEL:settings.model}).configured)throw new SetupError(400,'Укажите корректное имя модели Groq.');
+  const apiKey=settings.removeKey?'':settings.apiKey||(env[prefix+'_API_KEY']||'');
   if(!settings.removeKey&&!apiKey)throw new SetupError(400,'Введите API-ключ для подключения.');
   let current='';try{current=await readFile(filePath,'utf8');}catch(error){if(error.code!=='ENOENT')throw error;}
-  await atomicWrite(filePath,replaceSettings(current,apiKey,settings.model));
-  if(apiKey)env.OPENAI_API_KEY=apiKey;else delete env.OPENAI_API_KEY;
-  env.OPENAI_MODEL=settings.model;
+  await atomicWrite(filePath,replaceSettings(current,apiKey,settings.model,provider));
+  if(apiKey)env[prefix+'_API_KEY']=apiKey;else delete env[prefix+'_API_KEY'];
+  env[prefix+'_MODEL']=settings.model;
   return state();
  }
  return async function handle(request){
@@ -73,11 +84,12 @@ export function createLocalSettings({env,envPath,token=randomBytes(32).toString(
    if(!LOOPBACK.has(url.hostname))throw new SetupError(403,'Настройки доступны только на этом компьютере.');
    const origin=request.headers.get('Origin');
    if(origin!==null&&origin!==url.origin)throw new SetupError(403,'Недопустимый источник запроса.');
+   const provider=resolveAIProvider(env);if(!provider)return response({error:INVALID_PROVIDER_MESSAGE,code:'INVALID_PROVIDER'},400);
    if(request.method==='GET')return response({...state(),csrfToken:token});
    if(request.method!=='POST')return response({error:'Метод не поддерживается.'},405,{Allow:'GET, POST'});
    if(origin!==url.origin||!tokenMatches(request.headers.get('X-CQA-Setup-Token'),token))throw new SetupError(403,'Откройте настройки заново перед сохранением.');
-   const settings=await bodyJson(request);
-   const operation=pending.then(()=>persist(settings));pending=operation.catch(()=>{});
+   const settings=await bodyJson(request,provider);
+   const operation=pending.then(()=>persist(settings,provider));pending=operation.catch(()=>{});
    return response(await operation);
   }catch(error){return response({error:error instanceof SetupError?error.message:'Не удалось сохранить настройки. Проверьте доступ к локальной папке проекта.'},error instanceof SetupError?error.status:500);}
  };

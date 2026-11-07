@@ -151,7 +151,7 @@ test('Production excludes every synthetic marker even if provider is spoofed; te
  }
  const c=await assessed({source:'TEST',testMode:true,assessment:{id:'fixture-1',provider:'fixture',model:'deterministic-v1'}}),r=await reference(c);
  const report=await compareReferences([c],[r],[],{scope:'test'});assert.equal(report.coverage.compared,1);assert.equal(report.metrics.criteria.accuracy,1);
- assert.match(report.label,/не точность GPT/);assert.equal(report.rows[0].provider,'fixture');assert.equal(report.rows[0].referenceKind,'test');
+ assert.match(report.label,/не точность ИИ/);assert.equal(report.rows[0].provider,'fixture');assert.equal(report.rows[0].referenceKind,'test');
  const real=await assessed(),realReference=await reference(real);assert.equal(reason(await compareReferences([real],[realReference],[],{scope:'test'})),'excluded_scope');
  await assert.rejects(()=>reference(real,defaults(),{kind:'test'}));
 });
@@ -186,4 +186,11 @@ test('Different versions of the same criterion remain separate in per-criterion 
  const first=await assessed(),second=await assessed({id:'case-002',version:2}),a=await reference(first),b=await reference(second);
  const report=await compareReferences([first,second],[a,b]);
  assert.equal(report.coverage.compared,2);assert.equal(report.criteria.length,4);assert.deepEqual([...new Set(report.criteria.map(c=>c.version))],[1,2]);
+});
+
+test('Production comparison accepts Groq and preserves Gemini/OpenAI eligibility',async()=>{
+ for(const provider of ['groq','gemini','openai']){
+  const c=await assessed({assessment:{provider}}),r=await reference(c),report=await compareReferences([c],[r]);
+  assert.equal(report.coverage.compared,1);assert.equal(report.metrics.criteria.accuracy,1);assert.equal(report.rows[0].provider,provider);
+ }
 });

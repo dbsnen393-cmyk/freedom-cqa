@@ -49,7 +49,7 @@ test('A local assessment binds real hashes and evidence IDs without input change
   assert.equal(result.conversationId,conversation.id);assert.equal(result.sourceFingerprint,prepared.report.sourceFingerprint);assert.equal(result.checklistFingerprint,prepared.report.checklistFingerprint);assert.equal(result.version,2);
   assert.equal(result.assessment.provider,'fixture');assert.equal(result.assessment.model,'offline-fixture');assert.equal(result.assessment.testMode,true);assert.equal(result.testMode,true);assert.equal(result.assessment.scenario,'mixed');assert.equal(result.assessment.usage,undefined);
   assert.equal(result.finalScore,calculate(criteria,result.answers));assert.equal(result.critical,false);
-  for(const a of Object.values(result.answers)){assert.match(a.reason,/Учебный синтетический/);assert.match(a.reason,/Смысл диалога не оценивался/);assert.match(a.reason,/GPT не вызывался/);assert.ok(a.evidence.every(id=>conversation.messages.some(m=>m.id===id)));}
+  for(const a of Object.values(result.answers)){assert.match(a.reason,/Учебный синтетический/);assert.match(a.reason,/Смысл диалога не оценивался/);assert.match(a.reason,/ИИ не вызывался/);assert.ok(a.evidence.every(id=>conversation.messages.some(m=>m.id===id)));}
   installAssessment(conversation,result,[]);assert.equal(conversation.assessment.id,result.assessment.id);assert.equal(conversation.assessment.reviewed,false);assert.deepEqual(conversation.assessmentHistory,[]);
  }finally{globalThis.fetch=previousFetch;}
 });

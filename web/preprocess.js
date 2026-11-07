@@ -82,6 +82,7 @@ export async function preprocessConversation(conversation={},criteria=conversati
  if(backwardPairs.length)issue('backward_time','warning','Время местами идёт назад. Порядок исходных реплик сохранён; интервалы ответов не рассчитываются.',unique(backwardPairs.flat()));
  const operator=messages.filter(m=>m.role==='operator'),client=messages.filter(m=>m.role==='client');
  if(!operator.length)issue('no_operator','error','Нет реплик оператора: оценивать его работу пока нельзя.');
+ else if(!operator.some(m=>m.text.trim()))issue('no_operator_text','error','Нет содержательных реплик оператора: оценка невозможна. Проверьте транскрипт.');
  if(!client.length)issue('no_client','warning','Нет реплик клиента: контекста для оценки может быть недостаточно.');
  if(conversation.channel==='voice call')issue('voice_boundaries','info','Таймкоды не задают конец речи. Время речи, тишина и перебивания не вычисляются; возможны ошибки транскрибации.');
  if(!Array.isArray(criteria)||!criteria.length)issue('empty_checklist','error','Выберите непустой чек-лист.');

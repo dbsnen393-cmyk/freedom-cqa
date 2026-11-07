@@ -102,7 +102,7 @@ function render(){
   active==="validation"&&h("a",{href:"#settings",class:"back-link"},icon("back",16),"Настройки"),
   h("div",{class:"page-heading"},h("div",{},c&&h("div",{class:"eyebrow"},c.id),h("h1",{},title),h("p",{},description)),
    !c&&["overview","dialogs"].includes(active)?btn("Добавить диалоги","plus",uploadModal,"button primary"):active==="checklists"?btn("Добавить критерий","plus",()=>criterionModal(),"button primary"):null));
- if(!['validation','settings'].includes(active)&&(data.activeDataset==='TEST'||isTestConversation(c)))main.append(h('div',{class:'validation-notice test-notice',role:'note'},icon('alert',20),h('div',{},h('strong',{},'Учебный режим · без GPT'),h('p',{},'Значения задаются для проверки интерфейса. Это не оценка качества диалога и не результат работы модели.'))));
+ if(!['validation','settings'].includes(active)&&(data.activeDataset==='TEST'||isTestConversation(c)))main.append(h('div',{class:'validation-notice test-notice',role:'note'},icon('alert',20),h('div',{},h('strong',{},'Учебный режим · без ИИ'),h('p',{},'Значения задаются для проверки интерфейса. Это не оценка качества диалога и не результат работы модели.'))));
  if(["overview","dialogs"].includes(active)&&!c)main.append(h("div",{class:"dataset-toolbar"},sourceBar(),preparationBar()));
  if(!lastSaveSucceeded)main.append(h('section',{class:'source-bar',role:'alert'},h('div',{},h('strong',{},'Изменения пока только в памяти'),h('p',{},'Браузер не сохранил данные. Экспортируйте результаты до закрытия или обновления страницы.')),btn('Экспортировать результаты','download',download)));
  if(active==="overview")main.append(overview());
@@ -122,7 +122,7 @@ window.addEventListener("hashchange",()=>{route=location.hash.slice(1)||"overvie
 function settingsPage(){
  const setting=(title,description,ico,action)=>h('section',{class:'card workspace-setting'},h('div',{class:'setting-symbol'},icon(ico,21)),h('div',{class:'setting-copy'},h('h2',{},title),h('p',{},description)),action);
  return h('div',{class:'workspace-settings'},
-  setting('Оценка GPT','Подключение к модели и параметры оценки.','spark',btn('Настроить GPT','sliders',()=>ai.settings())),
+  setting('Оценка ИИ','Подключение к модели и параметры оценки.','spark',btn('Настроить ИИ','sliders',()=>ai.settings())),
   setting('Источники диалогов','Выбран источник: '+sourceLabel()+'. Диалогов: '+visibleConversations().length+'.','chats',btn('Управление наборами','sliders',sourceModal)),
   setting('Проверка модели','Сравнение с эталонной разметкой, расхождения и учебные сценарии.','checks',h('a',{class:'button',href:'#validation'},'Проверка точности',icon('arrow',16))));
 }
@@ -171,7 +171,7 @@ function showEvidence(ids,label="Основание оценки"){
 }
 function detail(c){
  const answers=finalAnswers(c);
- const meta=h("div",{class:"detail-meta"},h("span",{class:"operator-cell"},h("span",{class:"avatar mini"},initials(c.operator)),c.operator),h("span",{class:"language-chip"},c.language),h("span",{},icon("chats",15),c.channel==="voice call"?"Звонок":"Чат"),h("span",{},icon("clock",15),c.date),tag(isTestConversation(c)?"Учебная копия · без GPT":c.demo?"Демонстрационный пример":c.source==="import"?"Загруженный диалог":"Набор "+c.source));
+ const meta=h("div",{class:"detail-meta"},h("span",{class:"operator-cell"},h("span",{class:"avatar mini"},initials(c.operator)),c.operator),h("span",{class:"language-chip"},c.language),h("span",{},icon("chats",15),c.channel==="voice call"?"Звонок":"Чат"),h("span",{},icon("clock",15),c.date),tag(isTestConversation(c)?"Учебная копия · без ИИ":c.demo?"Демонстрационный пример":c.source==="import"?"Загруженный диалог":"Набор "+c.source));
  const transcript=createTranscript(c,{h,icon,save,onMessageSelect:m=>{selectedMessages.set(c.id,m.id);updateMessageContext(c,m);}});
  const selected=c.messages.find(m=>m.id===selectedMessages.get(c.id));
  transcript.append(messageContext(c,selected));
@@ -180,7 +180,7 @@ function detail(c){
  evaluation.append(h('div',{class:'analysis-tabs'},btn('Проверка данных','sliders',()=>{detailTab='preparation';render();},isPreparation?'selected':''),btn('Оценка','spark',()=>{detailTab='evaluation';render();},!isPreparation?'selected':'')));
  evaluation.querySelectorAll('.analysis-tabs button').forEach(button=>button.setAttribute('aria-pressed',String(button.classList.contains('selected'))));
  if(isTestConversation(c))evaluation.append(validation.testPanel(c));
- else {const aiPanel=ai.actionPanel(c,{busy:aiBusy.has(c.id),error:aiErrors.get(c.id)||'',onAssess:()=>runAssessment(c)});evaluation.append(answers?h('details',{class:'ai-reassessment',open:aiBusy.has(c.id)||aiErrors.has(c.id)},h('summary',{},icon('spark',16),'Повторная оценка GPT',icon('down',15)),aiPanel):aiPanel);}
+ else {const aiPanel=ai.actionPanel(c,{busy:aiBusy.has(c.id),error:aiErrors.get(c.id)||'',onAssess:()=>runAssessment(c)});evaluation.append(answers?h('details',{class:'ai-reassessment',open:aiBusy.has(c.id)||aiErrors.has(c.id)},h('summary',{},icon('spark',16),'Повторная оценка ИИ',icon('down',15)),aiPanel):aiPanel);}
  evaluation.append(h('div',{class:'validation-detail-actions'},(!isTestConversation(c)&&!c.demo&&c.source!=='DEMO')&&btn('Эталон вручную','edit',()=>validation.referenceModal(c),'text-button'),!isTestConversation(c)&&btn('Учебная копия','file',()=>validation.testModal(c),'text-button')));
  if(!answers&&c.assessmentHistory?.length)evaluation.append(h('details',{class:'preparation-details'},h('summary',{},'История предыдущих оценок · '+c.assessmentHistory.length,icon('down',15)),h('div',{class:'history-list'},c.assessmentHistory.map(historyEvent))));
  if(isPreparation){evaluation.append(preparationPanel(c,data.criteria,data.version,{h,icon,btn,tag,showEvidence:ids=>showEvidence(ids,"Кандидат для проверки"),onPrepare:()=>prepareOne(c),busy:preparingId===c.id}));return h('div',{},meta,h('div',{class:'detail-grid'},transcript,evaluation));}
@@ -202,11 +202,11 @@ function detail(c){
  results.append(h("p",{class:"method-note"},"Баллы рассчитываются пропорционально весам. Критерии N/A исключаются, итог нормируется до 100. Грубые ошибки отмечаются отдельно."));
  evaluation.append(results);
  }else{
- evaluation.append(h("div",{class:"history-list"},h("div",{class:"history-event"},h("span",{class:"timeline-dot"}),h("strong",{},"Исходная оценка"),h("p",{},formatScore(calculate(c.criteria,c.answers))+" / 100 · Чек-лист v"+c.version),h("small",{},c.assessment?(isTestConversation(c)?"Учебный ответ · ":"GPT · ")+c.assessment.model+" · "+new Date(c.assessment.createdAt).toLocaleString("ru-RU"):"Демонстрационная разметка")),
+ evaluation.append(h("div",{class:"history-list"},h("div",{class:"history-event"},h("span",{class:"timeline-dot"}),h("strong",{},"Исходная оценка"),h("p",{},formatScore(calculate(c.criteria,c.answers))+" / 100 · Чек-лист v"+c.version),h("small",{},c.assessment?(isTestConversation(c)?"Учебный ответ · ":"ИИ · ")+c.assessment.model+" · "+new Date(c.assessment.createdAt).toLocaleString("ru-RU"):"Демонстрационная разметка")),
  (c.assessmentHistory||[]).map(historyEvent),
  data.appeals.filter(a=>a.conversationId===c.id).map(a=>h("div",{class:"history-event"},h("span",{class:"timeline-dot"}),h("strong",{},c.criteria.find(r=>r.id===a.criterionId)?.title),h("p",{},a.comment),tag(a.status==="archived"?"Архив · предыдущая оценка":a.status==="open"?"Ожидает проверки":valueLabel(a.original)+" → "+valueLabel(a.decision),a.status==="open"?"amber":"green"),a.reason&&h("p",{},"Решение: "+a.reason)))));
  }
- }else evaluation.append(h("div",{class:"empty-state pending-state"},h("div",{class:"empty-icon"},icon("spark",28)),h("h3",{},"Диалог готов к оценке"),h("p",{},isTestConversation(c)?"Задайте учебный ответ кнопкой выше, затем проверьте переходы по репликам, апелляцию и пересчёт.":"Запустите оценку кнопкой выше. GPT проверит диалог по активному чек-листу и укажет реплики-основания."),tag("Ожидает анализа")));
+ }else evaluation.append(h("div",{class:"empty-state pending-state"},h("div",{class:"empty-icon"},icon("spark",28)),h("h3",{},"Диалог готов к оценке"),h("p",{},isTestConversation(c)?"Задайте учебный ответ кнопкой выше, затем проверьте переходы по репликам, апелляцию и пересчёт.":"Запустите оценку кнопкой выше. ИИ проверит диалог по активному чек-листу и укажет реплики-основания."),tag("Ожидает анализа")));
  return h("div",{},meta,h("div",{class:"detail-grid"},transcript,evaluation));
 }
 function checklists(){
@@ -296,11 +296,11 @@ function importRecords(text){
 }
 function uploadModal(){
  modal("Добавить диалоги",({close,error,showError,actions})=>{
- const accept=text=>{try{const n=importRecords(text);close();status="pending";search="";language="ALL";channel="all";page=1;go("dialogs");render();savedNotice("Добавлено диалогов: "+n+". Можно запускать подготовку и оценку GPT.");}catch(e){showError(e.message);}};
+ const accept=text=>{try{const n=importRecords(text);close();status="pending";search="";language="ALL";channel="all";page=1;go("dialogs");render();savedNotice("Добавлено диалогов: "+n+". Можно запускать подготовку и оценку ИИ.");}catch(e){showError(e.message);}};
  return h("div",{class:"modal-content"},h("p",{class:"modal-description"},"Загрузите JSON-файл с транскриптами диалогов."),
  h("label",{class:"upload-drop"},h("div",{class:"empty-icon"},icon("upload",28)),h("strong",{},"Выберите JSON-файл"),h("span",{},"Массив records или ответ API · до 5 МБ"),h("input",{type:"file",accept:".json,application/json",onChange:async e=>{const f=e.target.files[0];if(!f)return;if(f.size>5*1024*1024)return showError("Файл должен быть меньше 5 МБ.");try{accept(await f.text());}catch{showError("Не удалось прочитать файл.");}}})),
  h("div",{class:"or-divider"},h("span",{},"или вставьте JSON")),
- h("form",{onSubmit:e=>{e.preventDefault();accept(String(new FormData(e.currentTarget).get("json")));}},field("Данные диалогов","json","","textarea",{required:true,rows:7,placeholder:'{"records": [{"conversation_id": "chat-001", "language": "RU", "transcript": [{"timestamp": "00:00", "speaker": "client", "text": "Здравствуйте!"}]}]}'}),h("div",{class:"info-note"},icon("alert",16),h("span",{},"Новые диалоги сохраняются без оценки. Запустите подготовку и оценку GPT в карточке диалога.")),error,actions("Добавить","plus")));
+ h("form",{onSubmit:e=>{e.preventDefault();accept(String(new FormData(e.currentTarget).get("json")));}},field("Данные диалогов","json","","textarea",{required:true,rows:7,placeholder:'{"records": [{"conversation_id": "chat-001", "language": "RU", "transcript": [{"timestamp": "00:00", "speaker": "client", "text": "Здравствуйте!"}]}]}'}),h("div",{class:"info-note"},icon("alert",16),h("span",{},"Новые диалоги сохраняются без оценки. Запустите подготовку и оценку ИИ в карточке диалога.")),error,actions("Добавить","plus")));
  });
 }
 function archiveChangedAppeals(incoming){
@@ -356,7 +356,7 @@ function preparationBar(){
  const action=btn(batchPreparing?'Обработано '+batchProgress+' / '+list.length:'Подготовить набор','sliders',prepareDataset,'button');action.disabled=batchPreparing||!!preparingId||!list.length;
  return h('section',{class:'preparation-bar','aria-label':'Проверка данных набора'},h('div',{},h('strong',{},'Проверка данных'),h('p',{role:'status','aria-live':'polite'},'Подготовлено '+prepared.length+' из '+list.length+' · Чек-лист v'+data.version+(blocked?' · Требуют исправления: '+blocked:''))),action);
 }
-function historyEvent(run){return h('div',{class:'history-event'},h('span',{class:'timeline-dot'}),h('strong',{},'Предыдущая оценка'),h('p',{},formatScore(calculate(run.criteria,run.finalAnswers||run.answers))+' / 100 · Чек-лист v'+run.version),h('small',{},(run.assessment?.provider==='fixture'?'Учебный ответ · без GPT':run.assessment?.model||'Демонстрационная разметка')+(run.finalAnswers?' · с учётом ручных решений':'')),run.archiveReason&&h('p',{},run.archiveReason));}
+function historyEvent(run){return h('div',{class:'history-event'},h('span',{class:'timeline-dot'}),h('strong',{},'Предыдущая оценка'),h('p',{},formatScore(calculate(run.criteria,run.finalAnswers||run.answers))+' / 100 · Чек-лист v'+run.version),h('small',{},(run.assessment?.provider==='fixture'?'Учебный ответ · без ИИ':run.assessment?.model||'Демонстрационная разметка')+(run.finalAnswers?' · с учётом ручных решений':'')),run.archiveReason&&h('p',{},run.archiveReason));}
 function messageContext(c,message){
  const box=h('div',{class:'message-context',id:'message-context','aria-live':'polite'});
  if(!message){box.append(h('p',{},'Выберите реплику, чтобы увидеть связанные критерии.'));return box;}
@@ -374,10 +374,10 @@ async function runTestAssessment(c,options){
   const result=await createTestAssessment(c,rules,version,options);
   const current=data.conversations.find(item=>item.id===c.id);
   if(!current||!isTestConversation(current)||assessmentIdentity(current)!==identity||preprocessingKey(current,rules,version)!==key)throw Error('Учебный диалог изменился. Откройте актуальную копию.');
-  installAssessment(current,result,data.appeals);
+  installAssessment(current,result,data.appeals,{criteria:data.criteria,version:data.version});
   data.activeDataset='TEST';detailTab='assessment';const saved=save();
   if(route!=='dialog/'+encodeURIComponent(c.id))openDialog(current);else render();
-  if(saved)notify('Учебный результат сохранён. GPT не вызывался. Можно проверить апелляцию.');
+  if(saved)notify('Учебный результат сохранён. ИИ не вызывался. Можно проверить апелляцию.');
   return saved;
  }finally{aiBusy.delete(c.id);}
 }
@@ -398,9 +398,9 @@ async function runAssessment(c){
   const current=data.conversations.find(item=>item.id===c.id);
   if(!current||preprocessingKey(current,rules,version)!==sourceKey||assessmentIdentity(current)!==identity)throw Error('Диалог или его оценка изменились во время запроса. Новый результат не применён.');
   if(result.sourceFingerprint!==prepared.report.sourceFingerprint||result.checklistFingerprint!==prepared.report.checklistFingerprint)throw Error('Ответ не соответствует отправленному диалогу и чек-листу. Оценка не сохранена.');
-  installAssessment(current,result,data.appeals);save();
+  installAssessment(current,result,data.appeals,{criteria:data.criteria,version:data.version});save();
   if(route==='dialog/'+encodeURIComponent(c.id))detailTab='assessment';
-  savedNotice('Оценка GPT по чек-листу v'+version+' сохранена. Проверьте основания по каждому критерию.');
+  savedNotice('Оценка ИИ по чек-листу v'+version+' сохранена. Проверьте основания по каждому критерию.');
  }catch(error){aiErrors.set(c.id,error.name==='TimeoutError'?'Ожидание завершилось. Автоматический повтор не запускался.':error.message||'Не удалось получить оценку.');}
  finally{aiBusy.delete(c.id);render();}
 }

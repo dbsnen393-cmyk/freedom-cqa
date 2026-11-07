@@ -73,3 +73,21 @@ test('Reassessment history retains a detached source conversation for the old ev
  assert.equal(snapshot.conversation.messages.find(m=>m.id===snapshot.answers.contact.evidence[0]).text,'Здравствуйте.');
  assert.equal(snapshot.conversation.language,'RU');
 });
+
+test('Active checklist version change rejects a late assessment before mutating answers, appeals or history',async()=>{
+ const c=conversation(),incoming=result(),appeals=[{conversationId:c.id,status:'open',criterionId:'contact'}],active={version:incoming.version,criteria:structuredClone(incoming.criteria)};
+ let resolve;const response=new Promise(r=>{resolve=r;});const pending=response.then(r=>installAssessment(c,r,appeals,{version:active.version,criteria:active.criteria}));
+ const before=structuredClone({c,appeals});active.version++;resolve(incoming);
+ await assert.rejects(pending,/Активный чек-лист изменился/);assert.deepEqual({c,appeals},before);
+});
+for(const [name,mutate]of [
+ ['description',c=>{c[0].description='Новое определение';}],['weight',c=>{c[0].weight=20;}],['N/A',c=>{c[0].allowNA=true;c[0].naRule='Иное правило';}],['ID',c=>{c[0].id='renamed';}],['scale',c=>{c[0].type='scale';c[0].scale=[0,1,2];}]
+])test('Active checklist '+name+' edit is detected even if version was not incremented',()=>{
+ const c=conversation(),incoming=result(),active=structuredClone(incoming.criteria),before=structuredClone(c);mutate(active);
+ assert.throws(()=>installAssessment(c,incoming,[],{criteria:active,version:incoming.version}),/Активный чек-лист изменился/);assert.deepEqual(c,before);
+});
+test('Matching active checklist installs normally despite property order, preserving history and external result shape',()=>{
+ const c=conversation(),incoming=result(),before=structuredClone(incoming);
+ const active=incoming.criteria.map(r=>({naRule:r.naRule,allowNA:r.allowNA,weight:r.weight,scale:r.scale,type:r.type,description:r.description,title:r.title,id:r.id}));
+ installAssessment(c,incoming,[],{criteria:active,version:incoming.version});assert.deepEqual(c.answers,incoming.answers);assert.equal(c.assessmentHistory.length,1);assert.deepEqual(incoming,before);
+});

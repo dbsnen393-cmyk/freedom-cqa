@@ -124,7 +124,7 @@ export async function compareReferences(conversations,references,appeals=[],{mod
  conversations=copy(conversations);references=copy(references);appeals=copy(appeals);
  if(!['original','final'].includes(mode)||!['production','test'].includes(scope))fail('Неизвестный режим или область сравнения.');
  const coverage={conversations:conversations.length,references:references.length,eligible:0,compared:0,skipped:0,missingReference:0,withoutAssessment:0,stale:0,checklistMismatch:0,excluded:0,reasons:{}};
- const report={schema:'freedom-cqa-comparison-v1',mode,scope,label:scope==='test'?'Тестовая проверка механики — не точность GPT':mode==='original'?'Совпадение исходной оценки OpenAI с эталоном':'Совпадение итоговой оценки после апелляций с эталоном',coverage,metrics:{criteria:metric(),critical:flagMetric(),totals:{compared:0,mae:null,excludedAllNA:0}},criteria:[],flags:[],rows:[]};
+ const report={schema:'freedom-cqa-comparison-v1',mode,scope,label:scope==='test'?'Тестовая проверка механики — не точность ИИ':mode==='original'?'Совпадение исходной оценки ИИ с эталоном':'Совпадение итоговой оценки после апелляций с эталоном',coverage,metrics:{criteria:metric(),critical:flagMetric(),totals:{compared:0,mae:null,excludedAllNA:0}},criteria:[],flags:[],rows:[]};
  const byKey=new Map(),conversationKeys=new Set(conversations.map(keyOf)),criterionStats=new Map(),flagStats=new Map();
  for(const reference of references){const key=keyOf(reference);const group=byKey.get(key)||[];group.push(reference);byKey.set(key,group);}
  function skip(row,reason){row.reason=reason;coverage.skipped++;coverage.reasons[reason]=(coverage.reasons[reason]||0)+1;if(reason==='missing_reference')coverage.missingReference++;if(reason==='no_assessment')coverage.withoutAssessment++;if(reason.startsWith('stale_'))coverage.stale++;if(reason==='checklist_mismatch')coverage.checklistMismatch++;if(reason==='excluded_scope'||reason==='unsupported_provenance')coverage.excluded++;report.rows.push(row);}
@@ -141,7 +141,7 @@ export async function compareReferences(conversations,references,appeals=[],{mod
   if(reference.sourceFingerprint!==referenceContext.report.sourceFingerprint){skip(row,'stale_reference');continue;}
   if(reference.checklistFingerprint!==referenceContext.report.checklistFingerprint){skip(row,'checklist_mismatch');continue;}
   if(!conversation.answers){skip(row,'no_assessment');continue;}
-  if(scope==='production'?provider!=='openai':provider!=='fixture'){skip(row,'unsupported_provenance');continue;}
+  if(scope==='production'?!['openai','gemini','groq'].includes(provider):provider!=='fixture'){skip(row,'unsupported_provenance');continue;}
   try{currentContext=await prepared(conversation,conversation.criteria,conversation.version);}catch{skip(row,'invalid_assessment');continue;}
   if(reference.version!==conversation.version||reference.checklistFingerprint!==currentContext.report.checklistFingerprint){skip(row,'checklist_mismatch');continue;}
   if(conversation.sourceFingerprint!==currentContext.report.sourceFingerprint){skip(row,'stale_assessment');continue;}

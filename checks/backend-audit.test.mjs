@@ -53,7 +53,7 @@ test('Oversized scale is blocked explicitly without stack overflow or a partial 
 });
 import {handleApi} from '../worker/api.mjs';
 
-const apiEnv={OPENAI_API_KEY:'backend-audit-fixture-never-live',OPENAI_MODEL:'gpt-5.4'};
+const apiEnv={AI_PROVIDER:'openai',OPENAI_API_KEY:'backend-audit-fixture-never-live',OPENAI_MODEL:'gpt-5.4'};
 const apiRequest=path=>new Request('https://audit.invalid'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({conversation:conversation([message('operator','Здравствуйте!',1)]),criteria:rules(),checklistVersion:1})});
 
 test('Assessment and verification distinguish exhausted API credits from request rate limits without disclosing provider details',async()=>{

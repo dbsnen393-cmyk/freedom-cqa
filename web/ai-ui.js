@@ -123,7 +123,7 @@ export function createAIControls({h,icon,btn,tag,modal,notify,onConfigChange}){
   const settingsButton=btn('Настройки','sliders',settings,'text-button');settingsButton.disabled=busy;
   return h('section',{class:'ai-action-panel','aria-label':'Оценка ИИ','aria-busy':String(busy)},h('div',{class:'ai-action-heading'},h('div',{class:'ai-action-icon'},icon('spark',22)),h('div',{},h('h3',{},'Оценка ИИ'),h('p',{},configured?state.model:'Подключите ваш аккаунт '+providerLabel()+' API')),settingsButton),
    h('div',{class:'ai-action-status'},tag(stateText(),state.verified?'green':state.configured?'amber':'neutral',state.verified?'check':'shield')),
-   h('p',{class:'ai-action-description'},'Проверка подготовленного диалога по текущему чек-листу с обоснованиями и ссылками на реплики.'),
+   h('p',{class:'ai-action-description'},'Оценка по текущему чек-листу с обоснованиями и ссылками на реплики. Проверка исходных данных выполняется автоматически.'),
    error?h('p',{class:'ai-action-error',role:'alert'},safeMessage(error,'Не удалось получить оценку.')):null,
    busy?h('p',{class:'ai-action-progress',role:'status','aria-live':'polite'},h('span',{class:'ai-progress-dot','aria-hidden':'true'}),'Запрос отправлен. Проверяем ответ и рассчитываем итоговый балл.'):null,
    action,h('p',{class:'ai-action-note'},'Передаются текст после маскирования и критерии. Имена и нестандартные персональные данные могут остаться.'));

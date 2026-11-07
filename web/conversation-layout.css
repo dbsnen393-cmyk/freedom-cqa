@@ -24,7 +24,7 @@
 /* A bounded flex list scrolls its messages; it must never compress their content. */
 .conversation-page .transcript .messages>.message{flex:0 0 auto;min-height:min-content}
 .conversation-page .transcript .message{max-width:min(92%,86ch)}
-.conversation-page .transcript .message.system,.conversation-page .transcript .message.bot{max-width:100%}
+.conversation-page .transcript .message.system{max-width:100%}
 .conversation-page .transcript .transcript-foot{padding:8px 18px;font-size:10px;border-top:0}
 .conversation-page .transcript .message-context{padding:9px 18px}
 .conversation-page .transcript .message-context p{font-size:12px;margin:2px 0;line-height:1.6}

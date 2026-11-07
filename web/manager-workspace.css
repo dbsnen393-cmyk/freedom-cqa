@@ -93,7 +93,7 @@ body{color:var(--ink)}
 .panel-heading{padding:17px 20px}
 .panel-heading h2{font-size:15px}
 .message{border-radius:8px;background:#f3f5f7}
-.message.operator{background:#f0f6f3}
+.message.operator,.message.bot{background:#f0f6f3}
 .message p{font-size:14px;line-height:1.7}
 .message-label,.message-number{font-size:11px;color:var(--muted)}
 .message-label>span:first-child{color:#43535d}

@@ -20,6 +20,7 @@ let channel='all',page=1,syncing=false,syncError='';
 let preparingId=null,batchPreparing=false,batchProgress=0;
 const aiBusy=new Set(),aiErrors=new Map();
 const selectedMessages=new Map();
+const preparationExpanded=new Map();
 const sourceConversations=source=>data.conversations.filter(c=>source==='TEST'?isTestConversation(c):c.source===source&&!isTestConversation(c));
 const visibleConversations=()=>sourceConversations(data.activeDataset);
 const sourceLabel=()=>data.activeDataset==='TEST'?'Учебные копии':data.activeDataset==='DEMO'?'Демопримеры':data.activeDataset==='import'?'Импорт JSON':'Набор '+data.activeDataset;
@@ -68,7 +69,7 @@ function toggleMenu(open=!menuOpen){menuOpen=open;render();document.querySelecto
 function finalAnswers(c){return effectiveAnswers(c,data.appeals);}
 function currentAppeals(c){return data.appeals.filter(a=>a.conversationId===c.id&&a.status!=='archived'&&!a.archivedAt&&!a.archivedReason&&(a.assessmentId===undefined||a.assessmentId===assessmentIdentity(c)));}
 const scoreFor=c=>calculate(c.criteria,finalAnswers(c));
-function openDialog(c){if(!c)return;const source=isTestConversation(c)?'TEST':c.source;if(source&&data.activeDataset!==source){data.activeDataset=source;resetFilters();save();}detailTab=c.answers?"assessment":"preparation";go("dialog/"+encodeURIComponent(c.id));}
+function openDialog(c){if(!c)return;const source=isTestConversation(c)?'TEST':c.source;if(source&&data.activeDataset!==source){data.activeDataset=source;resetFilters();save();}detailTab="assessment";const nextRoute="dialog/"+encodeURIComponent(c.id);if(route===nextRoute)render();else go(nextRoute);}
 function downloadJSON(value,filename){const blob=new Blob([JSON.stringify(value,null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=h("a",{href:url,download:filename});a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 function download(){
  const scope=data.activeDataset==='TEST'?'test':data.activeDataset==='DEMO'?'demo':'production';
@@ -118,7 +119,7 @@ function render(){
  document.getElementById("app").replaceChildren(h("div",{class:"app-shell"},h("a",{href:"#main-content",class:"skip-link",onClick:e=>{e.preventDefault();main.setAttribute("tabindex","-1");main.focus();}},"Перейти к содержимому"),sidebar,h("div",{class:"main-shell"},header,main)));
  if(focused){const el=document.getElementById(focused);el?.focus();if(caret!==null&&el?.setSelectionRange)el.setSelectionRange(caret,caret);}
 }
-window.addEventListener("hashchange",()=>{route=location.hash.slice(1)||"overview";menuOpen=false;render();window.scrollTo(0,0);});
+window.addEventListener("hashchange",()=>{const nextRoute=location.hash.slice(1)||"overview";if(nextRoute!==route&&nextRoute.startsWith("dialog/"))detailTab="assessment";route=nextRoute;menuOpen=false;render();window.scrollTo(0,0);});
 function settingsPage(){
  const setting=(title,description,ico,action)=>h('section',{class:'card workspace-setting'},h('div',{class:'setting-symbol'},icon(ico,21)),h('div',{class:'setting-copy'},h('h2',{},title),h('p',{},description)),action);
  return h('div',{class:'workspace-settings'},
@@ -175,16 +176,17 @@ function detail(c){
  const transcript=createTranscript(c,{h,icon,save,onMessageSelect:m=>{selectedMessages.set(c.id,m.id);updateMessageContext(c,m);}});
  const selected=c.messages.find(m=>m.id===selectedMessages.get(c.id));
  transcript.append(messageContext(c,selected));
- const isPreparation=detailTab==='preparation'||(!answers&&detailTab==='assessment');
- const evaluation=h("section",{class:"card evaluation"},h("div",{class:"panel-heading"},h("h2",{},"Анализ диалога"),tag("Чек-лист v"+(isPreparation||!answers?data.version:c.version))));
- evaluation.append(h('div',{class:'analysis-tabs'},btn('Проверка данных','sliders',()=>{detailTab='preparation';render();},isPreparation?'selected':''),btn('Оценка','spark',()=>{detailTab='evaluation';render();},!isPreparation?'selected':'')));
- evaluation.querySelectorAll('.analysis-tabs button').forEach(button=>button.setAttribute('aria-pressed',String(button.classList.contains('selected'))));
+ const prepared=preparedConversation(c,data.criteria,data.version),blocked=prepared?.report.status==='blocked';
+ const diagnosticsOpen=blocked||preparationExpanded.get(c.id)===true;
+ let lastDiagnosticsOpen=diagnosticsOpen;
+ const diagnostics=h('details',{id:'source-diagnostics',class:'preparation-details source-diagnostics',open:diagnosticsOpen,onToggle:event=>{const node=event.currentTarget;if(!node.isConnected||node.open===lastDiagnosticsOpen)return;lastDiagnosticsOpen=node.open;preparationExpanded.set(c.id,node.open);}},h('summary',{},h('span',{},'Проверка исходных данных'),tag('Чек-лист v'+data.version),icon('down',15)),preparationPanel(c,data.criteria,data.version,{h,icon,btn,tag,showEvidence:ids=>showEvidence(ids,'Кандидат для проверки'),onPrepare:()=>prepareOne(c),busy:preparingId===c.id}));
+ const evaluation=h("section",{class:"card evaluation"},h("div",{class:"panel-heading"},h("h2",{},"Анализ диалога"),tag("Чек-лист v"+(answers?c.version:data.version))));
+ if(blocked)evaluation.append(h('div',{class:'validation-storage-warning',role:'alert'},icon('alert',18),h('div',{},h('p',{},'В исходных данных есть ошибки. Новая оценка недоступна до их исправления.'),btn('Проверка исходных данных','down',()=>{preparationExpanded.set(c.id,true);diagnostics.open=true;diagnostics.querySelector('summary')?.focus({preventScroll:true});diagnostics.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'});},'text-button'))));
  if(isTestConversation(c))evaluation.append(validation.testPanel(c));
  else {const aiPanel=ai.actionPanel(c,{busy:aiBusy.has(c.id),error:aiErrors.get(c.id)||'',onAssess:()=>runAssessment(c)});evaluation.append(answers?h('details',{class:'ai-reassessment',open:aiBusy.has(c.id)||aiErrors.has(c.id)},h('summary',{},icon('spark',16),'Повторная оценка ИИ',icon('down',15)),aiPanel):aiPanel);}
  evaluation.append(h('div',{class:'validation-detail-actions'},(!isTestConversation(c)&&!c.demo&&c.source!=='DEMO')&&btn('Эталон вручную','edit',()=>validation.referenceModal(c),'text-button'),!isTestConversation(c)&&btn('Учебная копия','file',()=>validation.testModal(c),'text-button')));
  if(!answers&&c.assessmentHistory?.length)evaluation.append(h('details',{class:'preparation-details'},h('summary',{},'История предыдущих оценок · '+c.assessmentHistory.length,icon('down',15)),h('div',{class:'history-list'},c.assessmentHistory.map(historyEvent))));
- if(isPreparation){evaluation.append(preparationPanel(c,data.criteria,data.version,{h,icon,btn,tag,showEvidence:ids=>showEvidence(ids,"Кандидат для проверки"),onPrepare:()=>prepareOne(c),busy:preparingId===c.id}));return h('div',{},meta,h('div',{class:'detail-grid'},transcript,evaluation));}
- if(answers&&detailTab==='evaluation')detailTab='assessment';
+
  if(answers){
  const totals=scoreBreakdown(c.criteria,answers);
  evaluation.append(h("div",{class:"evaluation-summary"},h("div",{},h("span",{},isTestConversation(c)?"Учебный результат":"Итоговая оценка"),h("div",{class:"big-score "+tone(totals.score)},formatScore(totals.score),h("small",{},"/100"))),h("div",{class:"summary-note"},icon("shield",20),h("span",{},"По "+c.criteria.length+" критериям",h("br"),h("small",{},"С учётом применимости N/A")))));
@@ -211,7 +213,8 @@ function detail(c){
  (c.assessmentHistory||[]).map(historyEvent),
  data.appeals.filter(a=>a.conversationId===c.id).map(a=>h("div",{class:"history-event"},h("span",{class:"timeline-dot"}),h("strong",{},c.criteria.find(r=>r.id===a.criterionId)?.title),h("p",{},a.comment),tag(a.status==="archived"?"Архив · предыдущая оценка":a.status==="open"?"Ожидает проверки":valueLabel(a.original)+" → "+valueLabel(a.decision),a.status==="open"?"amber":"green"),a.reason&&h("p",{},"Решение: "+a.reason)))));
  }
- }else evaluation.append(h("div",{class:"empty-state pending-state"},h("div",{class:"empty-icon"},icon("spark",28)),h("h3",{},"Диалог готов к оценке"),h("p",{},isTestConversation(c)?"Задайте учебный ответ кнопкой выше, затем проверьте переходы по репликам, апелляцию и пересчёт.":"Запустите оценку кнопкой выше. ИИ проверит диалог по активному чек-листу и укажет реплики-основания."),tag("Ожидает анализа")));
+ }else evaluation.append(h('p',{class:'method-note'},'Оценка ещё не выполнена.'));
+ evaluation.append(diagnostics);
  return h("div",{},meta,h("div",{class:"detail-grid"},transcript,evaluation));
 }
 function checklists(){
@@ -345,9 +348,9 @@ function sourceModal(){
 }
 
 async function prepareOne(c){
- if(preparingId||batchPreparing)return;preparingId=c.id;render();
- try{await prepareConversation(c,data.criteria,data.version);notify('Предварительный разбор готов. Данные в ИИ не отправлялись.');}
- catch{notify('Не удалось подготовить диалог. Проверьте данные и повторите попытку.');}
+ if(preparingId||batchPreparing)return;preparationExpanded.set(c.id,true);preparingId=c.id;render();
+ try{const result=await prepareConversation(c,data.criteria,data.version);notify(result.packet?'Исходные данные проверены. Данные в ИИ не отправлялись.':'Проверка завершена: в исходных данных есть ошибки.');}
+ catch{notify('Не удалось проверить исходные данные. Повторите проверку.');}
  finally{preparingId=null;render();}
 }
 async function prepareDataset(){
@@ -396,7 +399,7 @@ async function runAssessment(c){
  aiBusy.add(c.id);aiErrors.delete(c.id);render();
  try{
   const prepared=await prepareConversation(conversation,rules,version);
-  if(!prepared.packet)throw Error('В данных есть ошибки. Откройте подготовку к ИИ и исправьте их.');
+  if(!prepared.packet)throw Error('В данных есть ошибки. Откройте блок «Проверка исходных данных» и исправьте их.');
   const response=await fetch('/api/assess',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({conversation,criteria:rules,checklistVersion:version}),signal:AbortSignal.timeout(135000)});
   const result=await response.json().catch(()=>{throw Error('Сервер вернул неизвестный ответ. Оценка не сохранена.');});
   if(!response.ok)throw Error(result.error||'Не удалось получить оценку. Повторите позже.');

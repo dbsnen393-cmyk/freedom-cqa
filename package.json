@@ -1,13 +1,14 @@
 {
   "name": "freedom-cqa-prototype",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "node server.mjs",
     "start": "node server.mjs",
     "test": "node --test checks/*.test.mjs",
-    "build": "node build.mjs"
+    "build": "node build.mjs",
+    "prepare": "node scripts/prepare-dataset.mjs"
   },
   "engines": {
     "node": ">=20"

@@ -1,3 +1,4 @@
+import {Readable} from 'node:stream';
 import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {resolve,extname,sep} from 'node:path';
@@ -11,7 +12,7 @@ const port=Number(process.env.PORT||4173);
 createServer(async(req,res)=>{
  try{
   const url=new URL(req.url,'http://127.0.0.1:'+port);
-  const api=await handleApi(new Request(url,{method:req.method,headers:req.headers}),env);
+  const api=await handleApi(new Request(url,{method:req.method,headers:req.headers,...(!["GET","HEAD"].includes(req.method)?{body:Readable.toWeb(req),duplex:"half"}:{})}),env);
   if(api){res.writeHead(api.status,Object.fromEntries(api.headers));res.end(Buffer.from(await api.arrayBuffer()));return;}
   const path=decodeURIComponent(url.pathname),target=resolve(root,'.'+(path==='/'?'/index.html':path));
   if(!target.startsWith(resolve(root)+sep)){res.writeHead(403);res.end('Forbidden');return;}

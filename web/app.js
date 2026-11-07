@@ -1,6 +1,7 @@
 import {initialCriteria,demoConversations,calculate,valueLabel,formatScore} from "./domain.js";
 import {normalizeRecord,upgradeConversation,mergeDataset} from './timeline.js';
 import {createTranscript,stopPlayback,seekMessage} from './playback.js';
+import {preparedConversation,prepareConversation,preparationPanel} from './preparation-ui.js';
 const STORE="freedom-cqa-prototype-v1";
 const defaults={schema:1,conversations:demoConversations,criteria:initialCriteria,version:1,appeals:[]};
 let data=structuredClone(defaults);
@@ -9,6 +10,7 @@ let route=location.hash.slice(1)||"overview", search="", language="ALL", status=
 data.conversations=data.conversations.map(upgradeConversation);
 data.activeDataset ||= 'DEMO';data.syncHistory ||= {};
 let channel='all',page=1,syncing=false,syncError='';
+let preparingId=null,batchPreparing=false,batchProgress=0;
 const visibleConversations=()=>data.conversations.filter(c=>c.source===data.activeDataset);
 const sourceLabel=()=>data.activeDataset==='DEMO'?'Демопримеры':data.activeDataset==='import'?'Импорт JSON':'Набор '+data.activeDataset;
 const paths={
@@ -52,7 +54,7 @@ function notify(text){const box=document.getElementById("toast");box.replaceChil
 function save(){try{localStorage.setItem(STORE,JSON.stringify(data));}catch{notify("Не удалось сохранить данные в браузере. Экспортируйте результаты.");}}
 function finalAnswers(c){if(!c.answers)return null;const a=structuredClone(c.answers);for(const p of data.appeals.filter(p=>p.conversationId===c.id&&p.status==="resolved"))if(a[p.criterionId]&&p.decision!==undefined)a[p.criterionId].value=p.decision;return a;}
 const scoreFor=c=>calculate(c.criteria,finalAnswers(c));
-function openDialog(c){if(!c)return;detailTab="assessment";go("dialog/"+encodeURIComponent(c.id));}
+function openDialog(c){if(!c)return;detailTab=c.answers?"assessment":"preparation";go("dialog/"+encodeURIComponent(c.id));}
 function download(){const blob=new Blob([JSON.stringify({...data,prototype:true,conversations:data.conversations.map(c=>({...c,finalAnswers:finalAnswers(c),finalScore:scoreFor(c)}))},null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=h("a",{href:url,download:"freedom-cqa-export.json"});a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);notify("Результаты экспортированы.");}
 function render(){
  stopPlayback();
@@ -65,7 +67,7 @@ function render(){
   h("div",{class:"workspace"},h("div",{class:"workspace-icon"},icon("chats",21)),h("div",{},h("strong",{},"Контроль качества"),h("span",{},"Рабочее пространство"))),
   h("p",{class:"nav-label"},"АНАЛИТИКА ДИАЛОГОВ"),
   h("nav",{"aria-label":"Основная навигация"},nav.map(([id,label,ico])=>h("a",{href:"#"+id,class:"nav-item"+(active===id?" active":""),"aria-current":active===id?"page":null},icon(ico,20),h("span",{},label),id==="dialogs"?h("small",{},visibleConversations().length):id==="appeals"&&openCount?h("small",{},openCount):null))),
-  h("div",{class:"sidebar-bottom"},h("div",{class:"sidebar-note"},icon("shield",24),h("strong",{},"Прозрачная оценка"),h("p",{},"От каждого вывода —",h("br"),"к конкретной реплике.")),h("div",{class:"profile"},h("div",{class:"avatar"},"QA"),h("div",{},h("strong",{},"Команда качества"),h("span",{},"Рабочая сессия"))),h("div",{class:"sidebar-footer"},h("span",{},"FREEDOM CQA"),h("span",{},"v0.2"))));
+  h("div",{class:"sidebar-bottom"},h("div",{class:"sidebar-note"},icon("shield",24),h("strong",{},"Прозрачная оценка"),h("p",{},"От каждого вывода —",h("br"),"к конкретной реплике.")),h("div",{class:"profile"},h("div",{class:"avatar"},"QA"),h("div",{},h("strong",{},"Команда качества"),h("span",{},"Рабочая сессия"))),h("div",{class:"sidebar-footer"},h("span",{},"FREEDOM CQA"),h("span",{},"v0.3"))));
  const title=c?c.title:({overview:"Качество диалогов",dialogs:"Все диалоги",checklists:"Чек-листы оценки",appeals:"Апелляции"}[active]||"Диалог не найден");
  const description=c?"Транскрипт, оценка и основания в одном месте.":({overview:"Понимайте каждый диалог. Улучшайте клиентский опыт.",dialogs:"Оценивайте общение и находите точки роста.",checklists:"Единые правила для понятной и воспроизводимой оценки.",appeals:"Каждая спорная оценка заслуживает внимания."}[active]||"");
  const header=h("header",{class:"topbar"},h("div",{class:"breadcrumb"},btn("","menu",()=>{menuOpen=!menuOpen;render();},"icon-button mobile-menu"),h("span",{},"Рабочее пространство"),icon("chevron",14),h("strong",{},c?"Диалог":nav.find(n=>n[0]===active)?.[1]||"CQA")),h("div",{class:"topbar-right"},h("button",{class:"source-switch",onClick:sourceModal},h("span",{class:"tiny-dot green-dot"}),sourceLabel(),icon("down",14)),h("span",{class:"topbar-divider"}),icon("globe",16),h("span",{},"RU"),h("div",{class:"avatar small"},"QA")));
@@ -74,14 +76,14 @@ function render(){
   c&&h("a",{href:"#dialogs",class:"back-link"},icon("back",16),"Все диалоги"),
   h("div",{class:"page-heading"},h("div",{},h("div",{class:"eyebrow"},c?c.id:"CONVERSATION QUALITY ANALYTICS"),h("h1",{},title),h("p",{},description)),
    !c&&["overview","dialogs"].includes(active)?btn("Добавить диалоги","plus",uploadModal,"button primary"):active==="checklists"?btn("Добавить критерий","plus",()=>criterionModal(),"button primary"):null));
- if(["overview","dialogs"].includes(active)&&!c)main.append(sourceBar());
+ if(["overview","dialogs"].includes(active)&&!c)main.append(sourceBar(),preparationBar());
  if(active==="overview")main.append(overview());
  if(["overview","dialogs"].includes(active)&&!c)main.append(dialogTable());
  if(c)main.append(detail(c));
  if(active==="checklists")main.append(checklists());
  if(active==="appeals")main.append(appealsPage());
  if(route.startsWith("dialog/")&&!c)main.append(h("section",{class:"card empty-state"},h("h2",{},"Диалог не найден"),h("a",{href:"#dialogs",class:"button"},"Вернуться к списку")));
- main.append(h("footer",{class:"page-footer"},h("span",{},"Freedom CQA · Хакатон 2026"),h("span",{},"API диалогов подключён · AI-оценка в разработке")));
+ main.append(h("footer",{class:"page-footer"},h("span",{},"Freedom CQA · Хакатон 2026"),h("span",{},"Подготовка к ИИ работает · AI-оценка в разработке")));
  if(matchMedia("(max-width:1000px)").matches&&menuOpen)sidebar.prepend(btn("Закрыть меню","close",()=>{menuOpen=false;render();},"text-button mobile-close"));
  document.getElementById("app").replaceChildren(h("div",{class:"app-shell"},h("a",{href:"#main-content",class:"skip-link",onClick:e=>{e.preventDefault();main.setAttribute("tabindex","-1");main.focus();}},"Перейти к содержимому"),sidebar,h("div",{class:"main-shell"},header,main)));
  if(focused){const el=document.getElementById(focused);el?.focus();if(caret!==null&&el?.setSelectionRange)el.setSelectionRange(caret,caret);}
@@ -111,13 +113,13 @@ function dialogTable(){
  const languageSelect=h("select",{id:"language-filter","aria-label":"Язык диалога",onChange:e=>{language=e.target.value;page=1;render();}},[["ALL","Все языки"],["RU","RU"],["KZ","KZ"],["EN","EN"]].map(([v,t])=>h("option",{value:v,selected:language===v},t)));
  const sorting=h("select",{id:"sort-filter","aria-label":"Сортировка диалогов",onChange:e=>{sort=e.target.value;page=1;render();}},h("option",{value:"recent",selected:sort==="recent"},"По порядку"),h("option",{value:"score",selected:sort==="score"},"По оценке"));
  const table=h("table",{class:"dialog-table"},h("thead",{},h("tr",{},["Диалог","Оператор","Язык","Оценка","Статус",""].map(t=>h("th",{},t||h("span",{class:"sr-only"},"Действия"))))),h("tbody",{},filtered.slice((page-1)*12,page*12).map(c=>{
- const score=scoreFor(c), hasAppeal=data.appeals.some(a=>a.conversationId===c.id&&a.status==="open");
+ const prep=preparedConversation(c,data.criteria,data.version);const score=scoreFor(c), hasAppeal=data.appeals.some(a=>a.conversationId===c.id&&a.status==="open");
  const rowButton=btn("","up",()=>openDialog(c),"icon-button");rowButton.setAttribute("aria-label","Открыть "+c.id);
  return h("tr",{},h("td",{},h("button",{class:"dialog-title-button",onClick:()=>openDialog(c)},h("span",{class:"channel-icon"},icon(c.channel==="voice call"?"headphones":"chats",18)),h("span",{},h("strong",{},c.title),h("small",{},c.id,h("span",{}," · "),c.date)))),
  h("td",{},h("div",{class:"operator-cell"},h("span",{class:"avatar mini avatar-"+c.language.toLowerCase()},initials(c.operator)),c.operator)),
  h("td",{},h("span",{class:"language-chip"},c.language)),
  h("td",{},h("div",{class:"score-cell "+tone(score)},h("strong",{},formatScore(score)),score!==null&&h("span",{},"/ 100"))),
- h("td",{},tag(hasAppeal?"Апелляция":c.answers?"Оценён":"Ожидает оценки",hasAppeal?"amber":c.answers?"green":"neutral",hasAppeal?"scale":c.answers?"check":"clock")),h("td",{},rowButton));})));
+ h("td",{},tag(hasAppeal?"Апелляция":c.answers?"Оценён":prep?.report.status==="blocked"?"Ошибка данных":prep?"Подготовлен":"Ожидает оценки",hasAppeal?"amber":c.answers?"green":prep?.report.status==="blocked"?"red":"neutral",hasAppeal?"scale":c.answers?"check":prep?"file":"clock")),h("td",{},rowButton));})));
  return h("section",{class:"card table-card"},
   h("div",{class:"table-heading"},h("div",{class:"section-title"},h("h2",{},route==="overview"?"Последние диалоги":"Диалоги"),h("span",{class:"count"},visibleConversations().length)),btn("Экспорт","download",download,"text-button")),
   h("div",{class:"table-toolbar"},h("div",{class:"segmented","aria-label":"Статус диалогов"},[["all","Все диалоги"],["rated","Оценены"],["pending","Ожидают оценки"]].map(([id,label])=>h("button",{class:status===id?"selected":"","aria-pressed":String(status===id),onClick:()=>{status=id;page=1;render();}},label))),
@@ -126,16 +128,21 @@ function dialogTable(){
   !filtered.length&&h("div",{class:"empty-state"},icon("search",28),h("h3",{},"Ничего не найдено"),h("p",{},"Попробуйте другой запрос или измените фильтры."),btn("Сбросить фильтры",null,()=>{search="";language="ALL";status="all";channel="all";page=1;render();})),
   h("div",{class:"table-footer"},h("span",{},"Найдено "+filtered.length+" из "+visibleConversations().length),h("div",{class:"pagination"},btn("Назад",null,()=>{if(page>1){page--;render();}},"text-button"),h("span",{},page+" / "+Math.max(1,Math.ceil(filtered.length/12))),btn("Вперёд",null,()=>{if(page*12<filtered.length){page++;render();}},"text-button"))));
 }
-function showEvidence(ids){
+function showEvidence(ids,label="Основание оценки"){
  if(ids.length)seekMessage(ids[0]);
- document.querySelectorAll(".message").forEach(el=>{el.classList.toggle("highlighted",ids.includes(Number(el.dataset.id)));});
+ document.querySelectorAll(".message").forEach(el=>{el.classList.toggle("highlighted",ids.includes(Number(el.dataset.id)));if(ids.includes(Number(el.dataset.id)))el.querySelector(".evidence-marker")?.replaceChildren(icon("check",12),label);});
  const first=document.getElementById("message-"+ids[0]);first?.scrollIntoView({behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"instant":"smooth",block:"center"});first?.focus({preventScroll:true});
 }
 function detail(c){
  const answers=finalAnswers(c);
  const meta=h("div",{class:"detail-meta"},h("span",{class:"operator-cell"},h("span",{class:"avatar mini"},initials(c.operator)),c.operator),h("span",{class:"language-chip"},c.language),h("span",{},icon("chats",15),c.channel==="voice call"?"Звонок":"Чат"),h("span",{},icon("clock",15),c.date),tag(c.demo?"Демонстрационный пример":c.source==="import"?"Загруженный диалог":"Набор "+c.source));
  const transcript=createTranscript(c,{h,icon,save});
- const evaluation=h("section",{class:"card evaluation"},h("div",{class:"panel-heading"},h("h2",{},"Оценка диалога"),tag("Чек-лист v"+c.version)));
+ const isPreparation=detailTab==='preparation'||(!answers&&detailTab==='assessment');
+ const evaluation=h("section",{class:"card evaluation"},h("div",{class:"panel-heading"},h("h2",{},"Анализ диалога"),tag("Чек-лист v"+(isPreparation?data.version:c.version))));
+ evaluation.append(h('div',{class:'analysis-tabs'},btn('Подготовка к ИИ','sliders',()=>{detailTab='preparation';render();},isPreparation?'selected':''),btn('Оценка','spark',()=>{detailTab='evaluation';render();},!isPreparation?'selected':'')));
+ evaluation.querySelectorAll('.analysis-tabs button').forEach(button=>button.setAttribute('aria-pressed',String(button.classList.contains('selected'))));
+ if(isPreparation){evaluation.append(preparationPanel(c,data.criteria,data.version,{h,icon,btn,tag,showEvidence:ids=>showEvidence(ids,"Кандидат для проверки"),onPrepare:()=>prepareOne(c),busy:preparingId===c.id}));return h('div',{},meta,h('div',{class:'detail-grid'},transcript,evaluation));}
+ if(answers&&detailTab==='evaluation')detailTab='assessment';
  if(answers){
  evaluation.append(h("div",{class:"evaluation-summary"},h("div",{},h("span",{},"Итоговая оценка"),h("div",{class:"big-score "+tone(scoreFor(c))},formatScore(scoreFor(c)),h("small",{},"/100"))),h("div",{class:"summary-note"},icon("shield",20),h("span",{},"По "+c.criteria.length+" критериям",h("br"),h("small",{},"С учётом применимости N/A")))));
  evaluation.append(h("div",{class:"detail-tabs"},...["assessment","history"].map((id,i)=>btn(i?"История решений":"По критериям",null,()=>{detailTab=id;render();},detailTab===id?"selected":""))));
@@ -272,6 +279,23 @@ function sourceModal(){
  });
 }
 
+async function prepareOne(c){
+ if(preparingId||batchPreparing)return;preparingId=c.id;render();
+ try{await prepareConversation(c,data.criteria,data.version);notify('Предварительный разбор готов. Данные в ИИ не отправлялись.');}
+ catch{notify('Не удалось подготовить диалог. Проверьте данные и повторите попытку.');}
+ finally{preparingId=null;render();}
+}
+async function prepareDataset(){
+ if(batchPreparing||preparingId)return;batchPreparing=true;batchProgress=0;render();let failures=0;
+ const selected=visibleConversations().slice(),rules=structuredClone(data.criteria),version=data.version;
+ try{for(const c of selected){try{await prepareConversation(c,rules,version);}catch{failures++;}batchProgress++;if(batchProgress%8===0)render();}}
+ finally{batchPreparing=false;render();notify('Подготовлено '+(selected.length-failures)+' диалогов'+(failures?', ошибок: '+failures:'')+'. Отправки в ИИ не было.');}
+}
+function preparationBar(){
+ const list=visibleConversations(),prepared=list.filter(c=>preparedConversation(c,data.criteria,data.version)),blocked=prepared.filter(c=>preparedConversation(c,data.criteria,data.version).report.status==='blocked').length;
+ const action=btn(batchPreparing?'Обработано '+batchProgress+' / '+list.length:'Подготовить набор','sliders',prepareDataset,'button');action.disabled=batchPreparing||!!preparingId||!list.length;
+ return h('section',{class:'preparation-bar','aria-label':'Подготовка набора к ИИ'},h('div',{},h('strong',{},'Перед оценкой — проверка данных'),h('p',{role:'status','aria-live':'polite'},'Подготовлено '+prepared.length+' из '+list.length+' · Чек-лист v'+data.version+(blocked?' · Требуют исправления: '+blocked:''))),action);
+}
 render();
 
 matchMedia("(max-width:1000px)").addEventListener("change",()=>render());

@@ -1,3 +1,4 @@
+import {preprocessConversation} from '../web/preprocess.js';
 const datasetCache=new Map(), audioCache=new Map(), audioPending=new Map();
 const DATA_TTL=60_000, AUDIO_TTL=240_000, MAX_AUDIO_BYTES=28*1024*1024;
 const ORGANIZER_HOST="ec88f21f1accecf38e20095a9fe175.a5.environment.api.powerplatform.com";
@@ -67,6 +68,19 @@ export function rangeResponse(bytes,type,range,method="GET"){
 export async function handleApi(request,env){
  const url=new URL(request.url);
  if(!url.pathname.startsWith("/api/"))return null;
+ if(url.pathname==='/api/preprocess'){
+ if(request.method!=='POST')return jsonResponse({error:'Используйте POST для подготовки диалога.'},405);
+ if(!request.headers.get('Content-Type')?.includes('application/json'))return jsonResponse({error:'Ожидается JSON.'},415);
+ if(Number(request.headers.get('Content-Length'))>600000)return jsonResponse({error:'Пакет превышает 600 КБ.'},413);
+ try{
+  const reader=request.body?.getReader();if(!reader)return jsonResponse({error:'Нет данных диалога.'},400);
+  const chunks=[];let total=0;while(true){const {done,value}=await reader.read();if(done)break;total+=value.byteLength;if(total>600000){await reader.cancel();return jsonResponse({error:'Пакет превышает 600 КБ.'},413);}chunks.push(value);}
+  const bytes=new Uint8Array(total);let offset=0;for(const x of chunks){bytes.set(x,offset);offset+=x.byteLength;}
+  const body=JSON.parse(new TextDecoder().decode(bytes));
+  if(!body?.conversation||typeof body.conversation!=='object'||!Array.isArray(body.conversation.messages)||body.conversation.messages.length>5000||!Array.isArray(body.criteria)||body.criteria.length>100)return jsonResponse({error:'Проверьте диалог и чек-лист. Максимум 5 000 реплик и 100 критериев.'},400);
+  const result=await preprocessConversation(body.conversation,body.criteria,body.checklistVersion);return jsonResponse(result,result.packet?200:422);
+ }catch{return jsonResponse({error:'Не удалось прочитать или подготовить данные диалога.'},400);}
+ }
  if(!["GET","HEAD"].includes(request.method))return jsonResponse({error:"Метод не поддерживается."},405);
  try{
  if(url.pathname==="/api/status")return jsonResponse({organizerConfigured:Boolean(env.ORGANIZER_API_URL),aiConfigured:false});

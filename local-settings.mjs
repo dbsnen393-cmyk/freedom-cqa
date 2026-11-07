@@ -3,7 +3,7 @@ import {readFile,open,rename,unlink} from 'node:fs/promises';
 import {resolve,dirname,basename,join} from 'node:path';
 
 const LIMIT=8*1024;
-const MODEL=/^[a-zA-Z0-9._:-]{1,100}$/;
+const MODEL=/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,99}$/;
 const LOOPBACK=new Set(['localhost','127.0.0.1','[::1]','::1']);
 class SetupError extends Error{constructor(status,message){super(message);this.status=status;}}
 const response=(body,status=200,extra={})=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...extra}});

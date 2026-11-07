@@ -27,3 +27,46 @@ test('Source-change history retains at most the latest 20 assessments',()=>{
  const result=mergeDataset([old],[fresh]).conversations[0];assert.equal(result.assessmentHistory.length,20);assert.equal(result.assessmentHistory[0].assessmentId,'prior-1');assert.equal(result.assessmentHistory.at(-1).assessmentId,'ai-current');
 });
 
+
+test('Corrected language or channel invalidates an assessment even when messages are unchanged',()=>{
+ for(const corrected of [{language:'EN'},{channel:'agent chat'}]){
+  const old=normalizeRecord(record,[],1,'DEV');old.answers={contact:{value:true}};old.assessment={id:'ai-current',model:'test',createdAt:'2026-11-07T09:00:00Z'};
+  const fresh=normalizeRecord({...record,...corrected},[],2,'DEV');
+  const result=mergeDataset([old],[fresh]);
+  assert.equal(result.updated,1);assert.equal(result.conversations[0].language,fresh.language);assert.equal(result.conversations[0].channel,fresh.channel);
+  assert.equal(result.conversations[0].answers,null);assert.equal(result.conversations[0].assessment,undefined);assert.equal(result.conversations[0].transcriptChanged,true);
+  assert.equal(result.conversations[0].assessmentHistory.at(-1).assessmentId,'ai-current');
+ }
+});
+
+test('Duplicate conversation IDs in one incoming dataset are rejected without altering saved reviews',()=>{
+ const old=normalizeRecord(record,[],1,'DEV');old.answers={contact:{value:true}};
+ const first=normalizeRecord(record,[],2,'import'),second=normalizeRecord({...record,transcript:record.transcript.map(m=>({...m,text:m.text+' updated'}))},[],2,'import');
+ const before=structuredClone(old);
+ assert.throws(()=>mergeDataset([old],[first,second]),/ID/);assert.deepEqual(old,before);
+});
+
+test('Changed transcript history preserves the source text and context referenced by old evidence',()=>{
+ const old=normalizeRecord(record,[],1,'DEV');old.answers={contact:{value:true,evidence:[2]}};old.assessment={id:'ai-current',model:'test',createdAt:'2026-11-07T09:00:00Z'};
+ const original={id:old.id,language:old.language,channel:old.channel,messages:structuredClone(old.messages)};
+ const fresh=normalizeRecord({...record,language:'EN',channel:'agent chat',transcript:record.transcript.map((m,i)=>({...m,text:i===1?'Changed source':m.text}))},[],2,'DEV');
+ const current=mergeDataset([old],[fresh]).conversations[0],snapshot=current.assessmentHistory.at(-1);
+ assert.deepEqual(snapshot.conversation,original);
+ old.messages[1].text='Changed old object';current.messages[1].text='Changed latest object';
+ assert.equal(snapshot.conversation.messages.find(m=>m.id===snapshot.answers.contact.evidence[0]).text,'Здравствуйте');
+ assert.equal(snapshot.conversation.language,'RU');assert.equal(snapshot.conversation.channel,'voice call');
+ current.previousAssessment.conversation.messages[1].text='Changed previous shortcut';
+ assert.equal(snapshot.conversation.messages[1].text,'Здравствуйте');
+});
+
+test('Conflicting IDs from another source cannot replace the original dataset or its assessment',()=>{
+ const old=normalizeRecord(record,[],1,'DEV');old.answers={contact:{value:true}};
+ const before=structuredClone(old);
+ for(const source of ['import','CONTROL']){
+  const collision=normalizeRecord(record,[],2,source),newRecord=normalizeRecord({...record,conversation_id:'new-call'},[],2,source);
+  assert.throws(()=>mergeDataset([old],[newRecord,collision]),/другом источнике/);
+  assert.deepEqual(old,before);
+ }
+ const refreshed=mergeDataset([old],[normalizeRecord(record,[],2,'DEV')]);
+ assert.equal(refreshed.conversations[0].source,'DEV');assert.deepEqual(refreshed.conversations[0].answers,old.answers);
+});

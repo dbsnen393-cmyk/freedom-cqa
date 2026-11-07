@@ -65,19 +65,21 @@ export function activeMessageAt(entries,time){
  return entries[lo].message;
 }
 export function mergeDataset(existing,incoming){
+ const ids=new Set();for(const c of incoming){if(ids.has(c.id))throw Error("В наборе повторяются ID диалогов.");ids.add(c.id);}
  const map=new Map(existing.map(c=>[c.id,c]));let added=0,updated=0;
  for(const c of incoming){
  const old=map.get(c.id);
+ if(old?.source&&c.source&&old.source!==c.source)throw Error("ID диалога "+c.id+" уже используется в другом источнике («"+old.source+"»). Данные не сохранены. Для разных источников нужны уникальные ID.");
  if(!old){map.set(c.id,c);added++;continue;}
  const identity=m=>[m.role,m.sourceTimestamp||m.time,m.text];
- const unchanged=JSON.stringify(old.messages.map(identity))===JSON.stringify(c.messages.map(identity));
+ const unchanged=old.language===c.language&&old.channel===c.channel&&JSON.stringify(old.messages.map(identity))===JSON.stringify(c.messages.map(identity));
  if(unchanged){map.set(c.id,{...old,source:c.source,title:c.title,date:c.date,audioUrl:c.audioUrl,participants:c.participants,messages:c.messages,normalizedVersion:1,originTimestamp:c.originTimestamp});}
  else{
   const history=Array.isArray(old.assessmentHistory)?structuredClone(old.assessmentHistory):[];
   let previousAssessment=old.previousAssessment?structuredClone(old.previousAssessment):undefined;
   if(old.answers){
    const assessmentId=old.assessment?.id||((old.demo?'demo:':'legacy:')+String(old.id)+':v'+String(old.version??0));
-   const snapshot={assessmentId,assessment:old.assessment?structuredClone(old.assessment):{id:assessmentId,provider:old.demo?'demo':'legacy',model:null,createdAt:null},answers:structuredClone(old.answers),finalAnswers:structuredClone(old.finalAnswers||old.answers),criteria:structuredClone(old.criteria||[]),version:old.version,sourceFingerprint:old.sourceFingerprint??null,checklistFingerprint:old.checklistFingerprint??null,createdAt:old.assessment?.createdAt??null,archivedAt:new Date().toISOString(),archiveReason:'Изменился исходный транскрипт'};
+   const snapshot={assessmentId,conversation:structuredClone({id:old.id,language:old.language,channel:old.channel,messages:old.messages}),assessment:old.assessment?structuredClone(old.assessment):{id:assessmentId,provider:old.demo?'demo':'legacy',model:null,createdAt:null},answers:structuredClone(old.answers),finalAnswers:structuredClone(old.finalAnswers||old.answers),criteria:structuredClone(old.criteria||[]),version:old.version,sourceFingerprint:old.sourceFingerprint??null,checklistFingerprint:old.checklistFingerprint??null,createdAt:old.assessment?.createdAt??null,archivedAt:new Date().toISOString(),archiveReason:'Изменился исходный транскрипт'};
    // The application supplies effective finalAnswers before merging; fall back to originals for legacy callers.
    history.push(snapshot);previousAssessment=structuredClone(snapshot);
   }

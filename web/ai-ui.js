@@ -1,7 +1,7 @@
 /** OpenAI connection controls. Secrets stay in the password field until submitted to this server. */
 export function createAIControls({h,icon,btn,tag,modal,notify,onConfigChange}){
  let state={loaded:false,configured:false,model:'gpt-5.4',localConfiguration:false,csrfToken:null,verified:false,verifiedAt:null,error:null};
- let pendingLoad=null;
+ let pendingLoad=null,settingsPanel=null;
  const panels=new Set();
  const safeMessage=(value,fallback)=>{
   const candidate=typeof value==='string'?value:typeof value?.message==='string'?value.message:fallback;
@@ -40,15 +40,29 @@ export function createAIControls({h,icon,btn,tag,modal,notify,onConfigChange}){
   return pendingLoad;
  }
  const stateText=()=>!state.loaded?'Загрузка подключения':state.error?'Подключение не проверено':!state.configured?'Ключ не добавлен':state.verified?'Доступ проверен':'Ключ сохранён · доступ не проверен';
- async function settings(){
-  await loadConfig();
-  modal('Подключение GPT',({close,error,showError})=>{
+ function settings(){
+  if(settingsPanel?.isConnected)return;
+  modal('Подключение GPT',controls=>{
+   const panel=h('div',{class:'ai-settings-shell'},h('div',{class:'modal-content ai-settings'},h('p',{role:'status','aria-live':'polite'},'Загрузка настроек подключения…'),h('div',{class:'modal-actions'},btn('Отмена',null,controls.close))));
+   settingsPanel=panel;
+   loadConfig().then(()=>{
+    // Closing the loading dialog must not reopen it after the response arrives.
+    if(!panel.isConnected)return;
+    const restoreFocus=panel.contains(document.activeElement);
+    panel.replaceChildren(settingsContent(controls));
+    if(restoreFocus)panel.querySelector('input:not(:disabled),button:not(:disabled)')?.focus();
+   });
+   return panel;
+  });
+ }
+ function settingsContent({close,error,showError}){
    if(state.error)return h('div',{class:'modal-content ai-settings'},h('p',{class:'form-error',role:'alert'},state.error),h('div',{class:'modal-actions'},btn('Закрыть',null,close),btn('Повторить загрузку','sliders',()=>{close();settings();},'button primary')));
    const status=h('div',{class:'ai-settings-status','aria-live':'polite'},tag(stateText(),state.verified?'green':state.configured?'amber':'neutral','shield'));
    const resultNote=h('p',{class:'ai-connection-feedback',role:'status',hidden:true});
    const updateStatus=()=>status.replaceChildren(tag(stateText(),state.verified?'green':state.configured?'amber':'neutral','shield'));
    let saving=false,verifying=false;
    const verifyButton=btn('Проверить доступ','shield',verify,'button');
+   verifyButton.removeAttribute('aria-label');
    const modelInput=state.localConfiguration?h('input',{id:'ai-model-input',name:'model',type:'text',value:state.model||'gpt-5.4',required:true,maxlength:100,autocomplete:'off',autocapitalize:'none',spellcheck:'false'}):null;
    const keyInput=state.localConfiguration?h('input',{id:'ai-api-key-input',name:'apiKey',type:'password',value:'',required:!state.configured,maxlength:512,autocomplete:'off',autocapitalize:'none',spellcheck:'false',placeholder:state.configured?'Оставьте пустым, чтобы сохранить текущий ключ':'Вставьте ключ OpenAI API','aria-describedby':'ai-key-help'}):null;
    const saveButton=state.localConfiguration?h('button',{type:'submit',class:'button primary'},icon('check',17),'Сохранить подключение'):null;
@@ -59,7 +73,7 @@ export function createAIControls({h,icon,btn,tag,modal,notify,onConfigChange}){
     clearFeedback();
     if(!state.configured)return showError('Сначала добавьте API-ключ.');
     if(keyInput?.value.trim()||(modelInput&&modelInput.value.trim()!==state.model))return showError('Сначала сохраните изменения, затем проверьте доступ.');
-    verifying=true;disable(true);verifyButton.textContent='Проверка…';
+    verifying=true;disable(true);verifyButton.textContent='Проверка…';resultNote.textContent='Проверяем доступ к модели…';resultNote.hidden=false;
     try{
      const response=await request('/api/ai/verify',{method:'POST',body:{}});
      if(response?.config||typeof response?.configured==='boolean')applyConfig(response);
@@ -67,7 +81,7 @@ export function createAIControls({h,icon,btn,tag,modal,notify,onConfigChange}){
      else throw new Error('Сервер не подтвердил доступ к модели.');
      if(!state.verified)throw new Error('Ключ сохранён, но доступ к модели не подтверждён.');
      resultNote.textContent='Доступ к модели подтверждён. Разговоры при этой проверке не оценивались.';resultNote.hidden=false;changed();updateStatus();
-    }catch(failure){state={...state,verified:false,verifiedAt:null};showError(safeMessage(failure,'Не удалось проверить доступ.'));updateStatus();changed();}
+    }catch(failure){resultNote.hidden=true;state={...state,verified:false,verifiedAt:null};showError(safeMessage(failure,'Не удалось проверить доступ.'));updateStatus();changed();}
     finally{verifying=false;disable(false);verifyButton.replaceChildren(icon('shield',17),'Проверить доступ');}
    }
    if(!state.localConfiguration){
@@ -80,7 +94,7 @@ export function createAIControls({h,icon,btn,tag,modal,notify,onConfigChange}){
     if(!state.configured&&!apiKey)return showError('Добавьте API-ключ OpenAI.');
     if(!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$/.test(model))return showError('Укажите точное имя модели, например gpt-5.4.');
     if(!state.csrfToken)return showError('Сессия настройки устарела. Закройте окно и откройте его снова.');
-    saving=true;disable(true);saveButton.textContent='Сохранение…';
+    saving=true;disable(true);saveButton.textContent='Сохранение…';resultNote.textContent='Сохраняем подключение…';resultNote.hidden=false;
     try{
      const payload={model};if(apiKey)payload.apiKey=apiKey;
      const response=await request('/api/ai/config',{method:'POST',body:payload});
@@ -89,14 +103,13 @@ export function createAIControls({h,icon,btn,tag,modal,notify,onConfigChange}){
      keyInput.required=!state.configured;keyInput.placeholder='Оставьте пустым, чтобы сохранить текущий ключ';modelInput.value=state.model;
      updateStatus();changed();resultNote.textContent='Подключение сохранено на сервере. Можно проверить доступ или перейти к оценке диалога.';resultNote.hidden=false;
      if(typeof notify==='function')notify('Настройки GPT сохранены. Ключ не хранится в браузере.');
-    }catch(failure){showError(safeMessage(failure,'Не удалось сохранить подключение.'));}
+    }catch(failure){resultNote.hidden=true;showError(safeMessage(failure,'Не удалось сохранить подключение.'));}
     finally{saving=false;disable(false);saveButton.replaceChildren(icon('check',17),'Сохранить подключение');}
    }},status,h('p',{class:'ai-settings-help'},'Ключ передаётся только серверу этого сервиса. Он не включается в экспорт и не сохраняется в браузере.'),
     h('label',{class:'form-label',for:'ai-api-key-input'},'Ключ OpenAI API'),keyInput,h('p',{id:'ai-key-help',class:'ai-field-help'},state.configured?'Текущий ключ скрыт. Заполните поле, только если хотите заменить его.':'Создайте ключ в своём аккаунте OpenAI и вставьте его сюда.'),
     h('label',{class:'form-label',for:'ai-model-input'},'Модель'),modelInput,h('p',{class:'ai-field-help'},'Укажите точное имя модели, доступной вашему API-ключу.'),
     error,resultNote,h('div',{class:'ai-settings-verify'},verifyButton,h('span',{},'Проверка доступа не оценивает разговоры.')),h('div',{class:'modal-actions'},btn('Закрыть',null,close),saveButton));
    disable(false);return form;
-  });
  }
  function statusButton(){
   const text=!state.loaded?'GPT: подключение…':state.error?'GPT: настройки':!state.configured?'Подключить GPT':state.verified?'GPT: доступ проверен':'GPT: ключ сохранён';

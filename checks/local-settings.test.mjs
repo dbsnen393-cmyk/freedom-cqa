@@ -91,3 +91,11 @@ test('Sequentialized concurrent saves retain the most recent key and unrelated f
  const responses=await Promise.all([first,second]);assert.deepEqual(responses.map(r=>r.status),[200,200]);assert.equal(f.env.OPENAI_API_KEY,KEY_B);assert.equal(f.env.OPENAI_MODEL,'gpt-5.4-mini');
  const text=await readFile(f.envPath,'utf8');assert.ok(text.includes('ORGANIZER_API_URL=keep'));assert.ok(text.includes(KEY_B));assert.ok(!text.includes(KEY_A));assert.deepEqual(await readdir(f.dir),['.env']);
 });
+
+test('Local model settings reject names that the assessment API cannot use',async t=>{
+ const f=await fixture(t,{env:{OPENAI_API_KEY:KEY_A,OPENAI_MODEL:'gpt-5.4'}});
+ for(const model of ['.model','-model','_model',':model']){
+  const r=await f.handle(post({model}));assert.equal(r.status,400);assert.equal(f.env.OPENAI_MODEL,'gpt-5.4');
+ }
+ assert.equal(await readFile(f.envPath,'utf8'),'');
+});

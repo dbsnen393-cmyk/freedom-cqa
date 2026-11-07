@@ -1,9 +1,14 @@
 import {preprocessConversation} from '../web/preprocess.js';
-import {AIError,assessConversation,configuredAI} from './assessment.mjs';
+import {AIError,assessConversation,configuredAI,providerFailure} from './assessment.mjs';
 const datasetCache=new Map(), audioCache=new Map(), audioPending=new Map();
 const DATA_TTL=60_000, AUDIO_TTL=240_000, MAX_AUDIO_BYTES=28*1024*1024;
 const ORGANIZER_HOST="ec88f21f1accecf38e20095a9fe175.a5.environment.api.powerplatform.com";
 const AUDIO_HOST="freedomholdingcorporation.crm11.dynamics.com";
+class SourceError extends Error{constructor(code,message,status=502){super(message);this.name='SourceError';this.code=code;this.status=status;}}
+function sourceTransportError(error){
+ if(error?.name==='AbortError'||error?.name==='TimeoutError')return new SourceError('SOURCE_TIMEOUT','API организаторов не ответил вовремя. Повторите загрузку позже.',504);
+ return new SourceError('SOURCE_NETWORK','Не удалось подключиться к API организаторов. Проверьте доступность источника и повторите загрузку.',502);
+}
 function jsonResponse(value,status=200){return new Response(JSON.stringify(value),{status,headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}});}
 function groupFrom(url){const group=url.searchParams.get("group_id")||"DEV";if(!/^[A-Za-z0-9_-]{1,64}$/.test(group))throw new Error("Некорректный group_id.");return group;}
 function safeUrl(value,host){const u=new URL(value);if(u.protocol!=="https:"||u.hostname!==host||u.username||u.password)throw new Error("Недопустимый адрес источника.");return u;}
@@ -14,10 +19,13 @@ export async function fetchDataset(group,env,{refresh=false,fetcher=limitedFetch
  if(!env.ORGANIZER_API_URL)throw new Error("Подключение к API организаторов ещё не настроено.");
  const cached=datasetCache.get(group);if(!refresh&&cached&&Date.now()-cached.at<DATA_TTL)return cached.data;
  const url=safeUrl(env.ORGANIZER_API_URL,ORGANIZER_HOST);url.searchParams.set("group_id",group);
- const response=await fetcher(url.href,{headers:{Accept:"application/json"}});
+ let response;try{response=await fetcher(url.href,{headers:{Accept:"application/json"}});}catch(error){throw sourceTransportError(error);}
  if(!response.ok)throw new Error("API организаторов недоступен (HTTP "+response.status+").");
- const data=await response.json();
- if(data.isSuccess!==true||!Array.isArray(data.data?.records))throw new Error("API не вернул набор диалогов. Проверьте group_id.");
+ let data;try{data=await response.json();}catch(error){
+  if(error?.name==='SyntaxError')throw new SourceError('SOURCE_INVALID_JSON','API организаторов вернул ответ не в формате JSON. Повторите загрузку позже.');
+  throw sourceTransportError(error);
+ }
+ if(!data||data.isSuccess!==true||!Array.isArray(data.data?.records))throw new SourceError('SOURCE_INVALID_RESPONSE',"API не вернул набор диалогов. Проверьте group_id.");
  if(data.data.records.length>5000)throw new Error("Набор слишком большой для текущей версии.");
  datasetCache.set(group,{at:Date.now(),data:data.data});return data.data;
 }
@@ -88,14 +96,8 @@ export async function verifyAI(env={},options={}){
  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),20000);
  try{
   const response=await (options.fetcher||fetch)('https://api.openai.com/v1/models/'+encodeURIComponent(config.model),{method:'GET',headers:{Authorization:'Bearer '+key,Accept:'application/json'},redirect:'error',signal:controller.signal});
+  if(!response.ok)throw await providerFailure(response,{verification:true});
   try{await response.body?.cancel();}catch{}
-  if(!response.ok){
-   if(response.status===401)throw new AIError('OPENAI_AUTH','OpenAI отклонил API-ключ. Проверьте ключ в настройках.',401);
-   if(response.status===403)throw new AIError('OPENAI_ACCESS','У этого ключа нет доступа к выбранной модели или проекту OpenAI.',403);
-   if(response.status===404)throw new AIError('OPENAI_MODEL_NOT_FOUND','Модель не найдена или недоступна этому ключу. Проверьте её название.',404);
-   if(response.status===429)throw new AIError('OPENAI_LIMIT','OpenAI сообщил о лимите запросов. Проверьте лимиты и повторите позже.',429);
-   throw new AIError('OPENAI_UNAVAILABLE','OpenAI временно недоступен. Повторите проверку позже.',502);
-  }
   return {verified:true,provider:'openai',model:config.model};
  }catch(error){
   if(error instanceof AIError)throw error;
@@ -128,10 +130,11 @@ export async function handleApi(request,env={},options={}){
  try{
   if(url.pathname==='/api/status')return jsonResponse({organizerConfigured:Boolean(env.ORGANIZER_API_URL),aiConfigured:configuredAI(env).configured});
   const group=groupFrom(url);
-  if(url.pathname==='/api/datasets'){const data=await fetchDataset(group,env,{refresh:url.searchParams.get('refresh')==='1'});return jsonResponse(publicDataset(data,group));}
+  if(url.pathname==='/api/datasets'){const data=await fetchDataset(group,env,{refresh:url.searchParams.get('refresh')==='1',fetcher:options.fetcher});return jsonResponse(publicDataset(data,group));}
   if(url.pathname==='/api/audio'){const id=url.searchParams.get('conversation_id');if(!id||id.length>160)throw new Error('Не указан ID диалога.');const audio=await getAudio(group,id,env);return rangeResponse(audio.bytes,audio.type,request.headers.get('Range'),request.method);}
   return apiError('NOT_FOUND','Маршрут не найден.',404);
  }catch(error){
+  if(error instanceof SourceError)return jsonResponse({isSuccess:false,error:error.message,code:error.code},error.status);
   const known=error.message&&/^(Подключение|API |Некорректный|Набор|Аудио|У этого|Страница|Источник|На странице|Не указан|Недопустимый)/.test(error.message);
   return jsonResponse({isSuccess:false,error:known?error.message:'Не удалось связаться с источником. Повторите попытку.',code:'SOURCE_UNAVAILABLE'},502);
  }

@@ -1,8 +1,9 @@
 import {initialCriteria} from './domain.js';
 import {parseTimestamp} from './timeline.js';
 import {redactMessages} from './privacy.js';
-export const PREPROCESS_VERSION='preprocess-1.0';
+export const PREPROCESS_VERSION='preprocess-1.1';
 const roles=['operator','client','bot','system'];
+const MAX_SCALE_VALUES=100;
 const normalizeText=text=>text.normalize('NFC').replace(/\r\n?/g,'\n').replace(/\u00a0/g,' ').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,'').trim();
 const words=text=>(text.match(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu)||[]).length;
 const round=n=>Math.round(n*1000)/1000;
@@ -90,10 +91,11 @@ export async function preprocessConversation(conversation={},criteria=conversati
   if(typeof c.id!=='string'||!c.id||criteriaIds.has(c.id))issue('criterion_id','error','ID критериев должны быть непустыми и уникальными.');criteriaIds.add(c.id);
   if(typeof c.description!=='string'||!c.description.trim()||typeof c.title!=='string'||!c.title.trim())issue('criterion_text','error','Критерию нужны название и описание.');
   if(!['boolean','scale','flag'].includes(c.type)||!Number.isFinite(c.weight)||c.weight<0||typeof c.allowNA!=='boolean')issue('criterion_format','error','Проверьте тип, вес и применимость критерия.');
-  if(c.type==='scale'&&(!Array.isArray(c.scale)||c.scale.length<2||c.scale.some(x=>!Number.isFinite(x)||x<0)||new Set(c.scale).size!==c.scale.length||Math.max(...c.scale)<=0))issue('criterion_scale','error','Шкала должна содержать разные неотрицательные числа с положительным максимумом.');
+  if(c.type==='scale'&&(!Array.isArray(c.scale)||c.scale.length<2||c.scale.length>MAX_SCALE_VALUES||c.scale.some(x=>!Number.isFinite(x)||x<0)||new Set(c.scale).size!==c.scale.length||!c.scale.some(x=>x>0)))issue('criterion_scale','error','Шкала должна содержать от 2 до 100 разных неотрицательных чисел с положительным максимумом.');
   if(c.allowNA&&!(typeof c.naRule==='string'&&c.naRule.trim()))issue('criterion_na','error','Для N/A нужно явное условие применимости.');
   return {id:c.id,title:c.title,description:c.description,type:c.type,weight:c.weight,scale:c.type==='scale'&&Array.isArray(c.scale)?[...c.scale]:[],allowNA:c.allowNA,naRule:typeof c.naRule==='string'?c.naRule:''};
  }).filter(Boolean);
+ if(!Number.isFinite(cleanCriteria.filter(c=>c.type!=='flag').reduce((sum,c)=>sum+c.weight,0)))issue('criterion_weight','error','Сумма весов критериев слишком велика для корректного расчёта. Уменьшите веса.');
  const redaction=redactMessages(messages),safeMessages=redaction.messages;
  const turns=[];for(const m of safeMessages){const last=turns.at(-1);if(last?.role===m.role){last.messageIds.push(m.id);last.wordCount+=words(m.text);last.lastAtSeconds=m.atSeconds;}else turns.push({role:m.role,messageIds:[m.id],wordCount:words(m.text),firstAtSeconds:m.atSeconds,lastAtSeconds:m.atSeconds});}
  const counts=Object.fromEntries(roles.map(role=>[role,messages.filter(m=>m.role===role).length]));

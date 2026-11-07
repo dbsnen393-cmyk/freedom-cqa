@@ -1,5 +1,5 @@
 /** Deterministic, conservative masking. It does not certify complete anonymization. */
-export const PRIVACY_VERSION = 'privacy-1.0';
+export const PRIVACY_VERSION = 'privacy-1.1';
 const METADATA = ['id','uid','participantId','role','speaker','time','timestamp','sourceTimestamp','atSeconds'];
 const WARNINGS = [
   'Имена, адреса и свободно описанные персональные сведения могут остаться: требуется проверка перед внешней отправкой.',
@@ -28,7 +28,7 @@ function candidatesFor(text,previousPrompt){
  const promptOnly=previousPrompt && /^[\s\d+().-]+$/.test(text.trim()) ? previousPrompt : '';
  each(/https?:\/\/[^\s<>"']+/giu,m=>{let value=m[0].replace(/[),.;!?]+$/,'');try{const u=new URL(value);const secretKey=[...u.searchParams.keys()].some(k=>/^(?:sig|signature|token|access[_-]?token|refresh[_-]?token|api[_-]?key|key|secret|client[_-]?secret|x-amz-signature|x-amz-credential|x-goog-signature|password|passwd|pwd|auth|authorization|credential|code)$/i.test(k));if(u.username||u.password||secretKey||/(?:^|[&#])(?:token|access_token|api_key|secret)=/i.test(u.hash))add(m.index,value,'url_secret',100);}catch{}});
  each(/(?<![\p{L}\p{N}._%+-])[A-Z0-9._%+-]+@[A-Z0-9](?:[A-Z0-9.-]*[A-Z0-9])?\.[A-Z]{2,63}(?![\p{L}\p{N}])/giu,m=>add(m.index,m[0],'email',90));
- each(/(?<![\p{L}\p{N}])(?:\+7|8)[\s(.-]*[67]\d{2}[\s).-]*\d{3}[\s.-]*\d{2}[\s.-]*\d{2}(?!\d)/gu,m=>{const value=m[0];if(digits(value).length!==11)return;const ctx=context(m.index);if(value.startsWith('+7')||/[\s().-]/.test(value)||CONTEXT.phone.test(ctx+' '+promptOnly))add(m.index,value,'phone',85);});
+ each(/(?<![\p{L}\p{N}])(?:\+?7|8)[\s(.-]*[67]\d{2}[\s).-]*\d{3}[\s.-]*\d{2}[\s.-]*\d{2}(?!\d)/gu,m=>{const value=m[0];if(digits(value).length!==11)return;const ctx=context(m.index);if(value.startsWith('+7')||/[\s().-]/.test(value)||CONTEXT.phone.test(ctx+' '+promptOnly))add(m.index,value,'phone',85);});
  each(/(?<!\d)\d{12}(?!\d)/gu,m=>{if(CONTEXT.iin.test(context(m.index)+' '+promptOnly))add(m.index,m[0],'iin',80);});
  each(/(?<!\d)(?:\d[ -]?){12,18}\d(?!\d)/gu,m=>{const ctx=context(m.index),n=digits(m[0]),cardContext=CONTEXT.card.test(ctx+' '+promptOnly);const familiarFormat=/^(?:\d{4}[ -]){3}\d{4}$/.test(m[0])||/^[3456]\d{14,15}$/.test(m[0]);if((cardContext||(!CONTEXT.order.test(ctx)&&familiarFormat&&luhn(n)))&&n.length>=13&&n.length<=19)add(m.index,m[0],'card',75);});
  capture(/(?:\bIBAN\b|банковск(?:ий|ого)\s+сч[её]т(?:а)?|номер\s+(?:брокерского\s+)?сч[её]т(?:а)?|(?:broker(?:age)?\s+)?account\s*(?:number|no\.?|id)|шот\s+нөмір[іің]*)\s*(?:[:=№#—-]|is|это)?\s*([A-Z]{2}\d{2}[A-Z0-9]{10,30}|[A-Z0-9][A-Z0-9-]{5,29})(?![\p{L}\p{N}])/giu,'account');
@@ -54,10 +54,13 @@ export function redactMessages(messages){
  const registry=new Map(),serials={},findings=[],byType={};let affected=0,existingCount=0;
  const typeByLabel=Object.fromEntries(Object.entries(LABELS).map(([type,label])=>[label,type]));
  for(const message of messages){if(typeof message?.text!=='string')continue;for(const match of message.text.matchAll(/\[(EMAIL|SECRET_URL|PHONE|IIN|CARD|ACCOUNT|OTP|PASSWORD|CVV|SECRET)_(\d+)\]/g)){const type=typeByLabel[match[1]];serials[type]=Math.max(serials[type]||0,Number(match[2]));}}
+ let previousDialogue=null;
  const masked=messages.map((message,index)=>{
   if(!message||typeof message.text!=='string')throw new TypeError('У каждой реплики должен быть текст.');
-  const previous=messages[index-1];const priorRole=previous?.role||previous?.speaker,currentRole=message.role||message.speaker;
-  const previousPrompt=currentRole==='client'&&priorRole==='operator'?previous.text:'';
+  const previous=previousDialogue;const priorRole=previous?.role||previous?.speaker,currentRole=message.role||message.speaker;
+  const previousPrompt=currentRole==='client'&&['operator','bot'].includes(priorRole)?previous.text:'';
+  // Transport events do not answer a question; the next conversational reply does.
+  if(currentRole!=='system')previousDialogue=message;
   const {candidates,existingCount:priorCount}=candidatesFor(message.text,previousPrompt);existingCount+=priorCount;if(candidates.length)affected++;
   let cursor=0,text='';
   for(const c of candidates){

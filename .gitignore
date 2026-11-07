@@ -8,3 +8,7 @@ work/
 
 !.env.example
 dist/
+
+.claude-flow/
+
+.swarm/

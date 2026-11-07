@@ -62,3 +62,14 @@ test('History retention is bounded to 20 snapshots while latest originals remain
  assert.equal(c.assessmentHistory.length,20);assert.equal(c.assessmentHistory[0].assessment.id,'ai-run-5');assert.equal(c.assessmentHistory.at(-1).assessment.id,'ai-run-24');assert.equal(c.assessment.id,'ai-run-25');
  c.answers.contact.value=true;assert.equal(c.assessmentHistory.at(-1).answers.contact.value,true);c.assessmentHistory.at(-1).criteria[0].title='Old title';assert.equal(c.criteria[0].title,'Контакт');
 });
+
+test('Reassessment history retains a detached source conversation for the old evidence',()=>{
+ const c=conversation({assessment:{id:'ai-original',provider:'openai',model:'test',createdAt:'2026-11-07T09:00:00Z'}});
+ const original={id:c.id,language:c.language,channel:c.channel,messages:structuredClone(c.messages)};
+ installAssessment(c,result(),[]);
+ const snapshot=c.assessmentHistory.at(-1);
+ assert.deepEqual(snapshot.conversation,original);
+ c.messages[1].text='Changed after assessment';c.language='EN';
+ assert.equal(snapshot.conversation.messages.find(m=>m.id===snapshot.answers.contact.evidence[0]).text,'Здравствуйте.');
+ assert.equal(snapshot.conversation.language,'RU');
+});

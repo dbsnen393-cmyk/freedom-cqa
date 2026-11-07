@@ -5,6 +5,7 @@ export const ASSESSMENT_PROMPT_VERSION='cqa-assessment-1.0';
 export const DEFAULT_OPENAI_MODEL='gpt-5.4';
 const OPENAI_RESPONSES_URL='https://api.openai.com/v1/responses';
 const RESPONSE_LIMIT=2*1024*1024;
+const ERROR_RESPONSE_LIMIT=16*1024;
 const MAX_REASON_CHARS=2400;
 const own=(value,key)=>Object.prototype.hasOwnProperty.call(value,key);
 const isRecord=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
@@ -84,12 +85,23 @@ function upstreamError(status){
  if(status===400||status===404||status===422)return new AIError('OPENAI_REQUEST','OpenAI не принял запрос. Проверьте название модели и поддержку структурированного ответа.',502);
  return new AIError('OPENAI_UNAVAILABLE','OpenAI временно недоступен. Оценка не сохранена; повторите запрос позже.',502);
 }
-async function readProviderJSON(response){
- if(Number(response.headers.get('Content-Length'))>RESPONSE_LIMIT)throw new AIError('RESPONSE_TOO_LARGE','Ответ модели превышает допустимый размер. Оценка не сохранена.',502);
+export async function providerFailure(response,{verification=false}={}){
+ let codes=[];
+ try{
+  if(response.status===429){const detail=await readProviderJSON(response,ERROR_RESPONSE_LIMIT);if(isRecord(detail?.error))codes=[detail.error.code,detail.error.type];}
+ }catch{}finally{try{await response.body?.cancel();}catch{}}
+ if(response.status===429&&codes.some(code=>code==='insufficient_quota'||code==='credit_balance_exhausted'))return new AIError('OPENAI_QUOTA','Баланс OpenAI API исчерпан или закончилась квота проекта. Пополните баланс API либо проверьте лимит проекта в OpenAI Platform. Подписка ChatGPT оплачивается отдельно.',429);
+ if(response.status===429&&codes.includes('rate_limit_exceeded'))return new AIError('OPENAI_RATE_LIMIT','OpenAI временно ограничил частоту запросов. Подождите немного и повторите запрос.',429);
+ if(verification&&response.status===404)return new AIError('OPENAI_MODEL_NOT_FOUND','Модель не найдена или недоступна этому ключу. Проверьте её название.',404);
+ return upstreamError(response.status);
+}
+async function readProviderJSON(response,limit=RESPONSE_LIMIT){
+ if(Number(response.headers.get('Content-Length'))>limit)throw new AIError('RESPONSE_TOO_LARGE','Ответ модели превышает допустимый размер. Оценка не сохранена.',502);
  if(!response.body)throw new AIError('INVALID_PROVIDER_RESPONSE','OpenAI вернул пустой ответ. Оценка не сохранена.',502);
  const reader=response.body.getReader(),chunks=[];let length=0;
- try{while(true){const {done,value}=await reader.read();if(done)break;length+=value.byteLength;if(length>RESPONSE_LIMIT)throw new AIError('RESPONSE_TOO_LARGE','Ответ модели превышает допустимый размер. Оценка не сохранена.',502);chunks.push(value);}}
+ try{while(true){const {done,value}=await reader.read();if(done)break;length+=value.byteLength;if(length>limit)throw new AIError('RESPONSE_TOO_LARGE','Ответ модели превышает допустимый размер. Оценка не сохранена.',502);chunks.push(value);}}
  catch(error){await reader.cancel().catch(()=>{});throw error;}
+ finally{reader.releaseLock();}
  const bytes=new Uint8Array(length);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}
  try{return JSON.parse(new TextDecoder().decode(bytes));}catch{throw new AIError('INVALID_PROVIDER_RESPONSE','OpenAI вернул ответ в неизвестном формате. Оценка не сохранена.',502);}
 }
@@ -116,7 +128,7 @@ export async function assessConversation(conversation,criteria,version,env={},op
  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),120000);let response;
  try{
   const upstream=await fetcher(OPENAI_RESPONSES_URL,{method:'POST',headers:{'Authorization':'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify(request),signal:controller.signal,redirect:'error'});
-  if(!upstream.ok){try{await upstream.body?.cancel();}catch{}throw upstreamError(upstream.status);}
+  if(!upstream.ok)throw await providerFailure(upstream);
   response=await readProviderJSON(upstream);
  }catch(error){
   if(error instanceof AIError)throw error;

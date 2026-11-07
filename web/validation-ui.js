@@ -133,9 +133,9 @@ export function createValidationUI({h,icon,btn,tag,modal,notify,getData,save,ren
     event.preventDefault();try{
      const original=choices[Number(select.value)];if(!original)throw new Error('Выберите исходный диалог.');
      const copy=createTestConversation(original);getData().conversations.push(copy);getData().activeDataset='TEST';
-     const saved=saveChanges();close();openDialog(copy);render();if(saved)notify('Учебная копия создана. Можно задать значения и проверить весь процесс без GPT.');
+     const saved=saveChanges();close();openDialog(copy);render();if(saved)notify('Учебная копия создана в TEST. Задайте значения критериев.');
     }catch(failure){showError(failure.message||'Не удалось создать копию.');}
-   }},testBanner(),h('p',{class:'modal-description'},'Копия получит отдельный ID и источник TEST. Вы сможете пройти оценку, доказательства и апелляцию, не изменяя исходный диалог.'),field('Исходный диалог','test-source-conversation',select),error,h('div',{class:'modal-actions'},btn('Отмена',null,close),h('button',{class:'button primary',type:'submit'},icon('plus'),'Создать копию')));
+   }},testBanner(),h('p',{class:'modal-description'},'Копия получит отдельный ID и источник TEST. Оценка, доказательства и апелляции доступны в копии. Исходный диалог не изменяется.'),field('Исходный диалог','test-source-conversation',select),error,h('div',{class:'modal-actions'},btn('Отмена',null,close),h('button',{class:'button primary',type:'submit'},icon('plus'),'Создать копию')));
   });
  }
 
@@ -236,8 +236,8 @@ export function createValidationUI({h,icon,btn,tag,modal,notify,getData,save,ren
 
  function offlineSection(){
   const copies=testConversations();
-  return h('section',{class:'card validation-offline'},h('div',{class:'validation-section-heading'},h('div',{},h('div',{class:'eyebrow'},'ПРОВЕРКА ПРОЦЕССА'),h('h2',{},'Учебный стенд без GPT'),h('p',{},'Проверьте оценку, доказательства, историю и апелляцию на отдельной копии.')),btn('Создать учебную копию','plus',copyModal)),
-   testBanner(),h('ol',{class:'validation-steps'},h('li',{},h('strong',{},'Создайте копию'),h('span',{},'Отдельный диалог с источником TEST.')),h('li',{},h('strong',{},'Задайте значения'),h('span',{},'Любой сценарий по каждому критерию.')),h('li',{},h('strong',{},'Проверьте результат'),h('span',{},'Откройте доказательства и подайте апелляцию.'))),
+  return h('section',{class:'card validation-offline'},h('div',{class:'validation-section-heading'},h('div',{},h('div',{class:'eyebrow'},'ПРОВЕРКА ПРОЦЕССА'),h('h2',{},'Учебный стенд без GPT'),h('p',{},'Проверка оценки, доказательств, истории и апелляции на отдельной копии TEST.')),btn('Создать учебную копию','plus',copyModal)),
+   testBanner(),h('ol',{class:'validation-steps'},h('li',{},h('strong',{},'Создайте копию'),h('span',{},'Отдельный диалог с источником TEST.')),h('li',{},h('strong',{},'Задайте значения'),h('span',{},'Выберите сценарий и значения критериев.')),h('li',{},h('strong',{},'Проверьте результат'),h('span',{},'Откройте доказательства и подайте апелляцию.'))),
    copies.length?h('div',{class:'validation-test-list'},copies.slice(-6).reverse().map(c=>h('div',{class:'validation-test-item'},h('div',{},h('strong',{},c.title||c.id),h('small',{},`${c.answers?'Учебная оценка готова':'Ожидает учебной оценки'} · ${c.id}`)),btn('Открыть','arrow',()=>openDialog(c),'text-button'))),copies.length>6&&h('p',{class:'validation-help'},`Показаны последние 6 из ${copies.length} копий. Все копии доступны в источнике TEST.`)):h('p',{class:'validation-offline-empty'},'Учебных копий пока нет. Для создания можно использовать любой загруженный диалог.'));
  }
 
@@ -277,7 +277,7 @@ export function createValidationUI({h,icon,btn,tag,modal,notify,getData,save,ren
    h('section',{class:'card validation-controls'},h('div',{class:'validation-control-row'},field('Контур сравнения','validation-scope',scopeSelect),field('Версия оценки','validation-mode',modeSelect)),scopeHelp,
     h('div',{class:'validation-tools'},btn('Импорт эталонов','upload',importModal),templateButton,exportButton,referenceCount),
     h('p',{class:'validation-help'},'Эталон — независимая ручная разметка. Шаблон содержит незаполненные значения; оценки GPT в него не копируются.'),pageError),
-   h('div',{class:'validation-offline-entry'},h('div',{},h('strong',{},'Учебный стенд · без GPT'),h('p',{},'Задайте значения на копии и проверьте процесс, включая апелляцию.')),btn('Создать учебную копию','plus',copyModal)),
+   h('div',{class:'validation-offline-entry'},h('div',{},h('strong',{},'Учебный стенд · без GPT'),h('p',{},'Проверка оценки и апелляции на копии TEST.')),btn('Создать учебную копию','plus',copyModal)),
    reportStatus,report,offlineSection());
   queueMicrotask(refresh);return pageNode;
  }

@@ -101,7 +101,7 @@ export function createAIControls({h,icon,btn,tag,modal,notify,onConfigChange}){
      keyInput.value='';state={...state,verified:false,verifiedAt:null};
      if(response?.config||typeof response?.configured==='boolean')applyConfig(response);else applyConfig(await request('/api/ai/config'));
      keyInput.required=!state.configured;keyInput.placeholder='Оставьте пустым, чтобы сохранить текущий ключ';modelInput.value=state.model;
-     updateStatus();changed();resultNote.textContent='Подключение сохранено на сервере. Можно проверить доступ или перейти к оценке диалога.';resultNote.hidden=false;
+     updateStatus();changed();resultNote.textContent='Подключение сохранено на сервере. Проверьте доступ к модели.';resultNote.hidden=false;
      if(typeof notify==='function')notify('Настройки GPT сохранены. Ключ не хранится в браузере.');
     }catch(failure){resultNote.hidden=true;showError(safeMessage(failure,'Не удалось сохранить подключение.'));}
     finally{saving=false;disable(false);saveButton.replaceChildren(icon('check',17),'Сохранить подключение');}
@@ -120,9 +120,9 @@ export function createAIControls({h,icon,btn,tag,modal,notify,onConfigChange}){
   const action=btn(busy?'GPT оценивает диалог…':configured?(c.answers?'Оценить повторно':'Оценить через GPT'):'Подключить GPT','spark',()=>{if(busy)return;if(configured){if(typeof onAssess==='function')onAssess();}else settings();},'button primary ai-assess-button');
   action.disabled=busy||(configured&&typeof onAssess!=='function');
   const settingsButton=btn('Настройки','sliders',settings,'text-button');settingsButton.disabled=busy;
-  return h('section',{class:'ai-action-panel','aria-label':'Финальная оценка GPT','aria-busy':String(busy)},h('div',{class:'ai-action-heading'},h('div',{class:'ai-action-icon'},icon('spark',22)),h('div',{},h('h3',{},'Финальная оценка GPT'),h('p',{},configured?state.model:'Подключите ваш аккаунт OpenAI API')),settingsButton),
+  return h('section',{class:'ai-action-panel','aria-label':'Оценка GPT','aria-busy':String(busy)},h('div',{class:'ai-action-heading'},h('div',{class:'ai-action-icon'},icon('spark',22)),h('div',{},h('h3',{},'Оценка GPT'),h('p',{},configured?state.model:'Подключите ваш аккаунт OpenAI API')),settingsButton),
    h('div',{class:'ai-action-status'},tag(stateText(),state.verified?'green':state.configured?'amber':'neutral',state.verified?'check':'shield')),
-   h('p',{class:'ai-action-description'},'Модель проверит весь подготовленный диалог по текущему чек-листу и обоснует каждый вывод ссылками на реплики.'),
+   h('p',{class:'ai-action-description'},'Проверка подготовленного диалога по текущему чек-листу с обоснованиями и ссылками на реплики.'),
    error?h('p',{class:'ai-action-error',role:'alert'},safeMessage(error,'Не удалось получить оценку.')):null,
    busy?h('p',{class:'ai-action-progress',role:'status','aria-live':'polite'},h('span',{class:'ai-progress-dot','aria-hidden':'true'}),'Запрос отправлен. Проверяем ответ и рассчитываем итоговый балл.'):null,
    action,h('p',{class:'ai-action-note'},'Передаются текст после маскирования и критерии. Имена и нестандартные персональные данные могут остаться.'));

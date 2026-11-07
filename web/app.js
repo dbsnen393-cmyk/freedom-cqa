@@ -5,6 +5,8 @@ import {preparedConversation,prepareConversation,preparationPanel} from './prepa
 import {createAIControls} from './ai-ui.js';
 import {assessmentIdentity,effectiveAnswers,installAssessment} from './assessment-state.js';
 import {preprocessingKey} from './preprocess.js';
+import {isTestConversation,createTestAssessment} from './offline-assessment.js';
+import {createValidationUI} from './validation-ui.js';
 const STORE="freedom-cqa-prototype-v1";
 const defaults={schema:1,conversations:demoConversations,criteria:initialCriteria,version:1,appeals:[]};
 let data=structuredClone(defaults);
@@ -12,13 +14,15 @@ try{const saved=JSON.parse(localStorage.getItem(STORE));if(saved?.schema===1&&Ar
 let route=location.hash.slice(1)||"overview", search="", language="ALL", status="all", sort="recent", detailTab="assessment", menuOpen=false;
 data.conversations=data.conversations.map(upgradeConversation);
 data.activeDataset ||= 'DEMO';data.syncHistory ||= {};
+data.references = Array.isArray(data.references)?data.references:[];
 if(Array.isArray(data.archivedAppeals)){for(const a of data.archivedAppeals)if(!data.appeals.some(p=>p.id===a.id))data.appeals.push({...a,previousStatus:a.status,status:'archived',archiveReason:a.archivedReason||'Изменился исходный транскрипт'});delete data.archivedAppeals;}
 let channel='all',page=1,syncing=false,syncError='';
 let preparingId=null,batchPreparing=false,batchProgress=0;
 const aiBusy=new Set(),aiErrors=new Map();
 const selectedMessages=new Map();
-const visibleConversations=()=>data.conversations.filter(c=>c.source===data.activeDataset);
-const sourceLabel=()=>data.activeDataset==='DEMO'?'Демопримеры':data.activeDataset==='import'?'Импорт JSON':'Набор '+data.activeDataset;
+const sourceConversations=source=>data.conversations.filter(c=>source==='TEST'?isTestConversation(c):c.source===source&&!isTestConversation(c));
+const visibleConversations=()=>sourceConversations(data.activeDataset);
+const sourceLabel=()=>data.activeDataset==='TEST'?'Учебные копии':data.activeDataset==='DEMO'?'Демопримеры':data.activeDataset==='import'?'Импорт JSON':'Набор '+data.activeDataset;
 const paths={
  grid:'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',
  chats:'M21 11a4 4 0 0 1-4 4H7l-4 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z M7 7h10 M7 11h7',
@@ -53,7 +57,7 @@ const btn=(text,ico,fn,cls="button")=>h("button",{class:cls,type:"button","aria-
 const tag=(text,tone="neutral",ico)=>h("span",{class:"tag "+tone},ico&&icon(ico,12),text);
 const initials=name=>name.split(" ").slice(0,2).map(x=>x[0]).join("");
 const tone=score=>score===null?"neutral":score>=90?"green":score>=75?"amber":"red";
-const nav=[["overview","Обзор","grid"],["dialogs","Диалоги","chats"],["checklists","Чек-листы","list"],["appeals","Апелляции","scale"]];
+const nav=[["overview","Обзор","grid"],["dialogs","Диалоги","chats"],["checklists","Чек-листы","list"],["appeals","Апелляции","scale"],["validation","Проверка точности","checks"]];
 const roleNames={client:"Клиент",operator:"Оператор",system:"Система",bot:"Бот"};
 const go=url=>{location.hash=url;};
 function notify(text){const box=document.getElementById("toast");box.replaceChildren(icon("checks",20),h("span",{},text),btn("","close",()=>box.classList.remove("visible"),"toast-close"));box.classList.add("visible");clearTimeout(notify.timer);notify.timer=setTimeout(()=>box.classList.remove("visible"),5500);}
@@ -64,23 +68,32 @@ function toggleMenu(open=!menuOpen){menuOpen=open;render();document.querySelecto
 function finalAnswers(c){return effectiveAnswers(c,data.appeals);}
 function currentAppeals(c){return data.appeals.filter(a=>a.conversationId===c.id&&a.status!=='archived'&&!a.archivedAt&&!a.archivedReason&&(a.assessmentId===undefined||a.assessmentId===assessmentIdentity(c)));}
 const scoreFor=c=>calculate(c.criteria,finalAnswers(c));
-function openDialog(c){if(!c)return;detailTab=c.answers?"assessment":"preparation";go("dialog/"+encodeURIComponent(c.id));}
-function download(){const blob=new Blob([JSON.stringify({...data,prototype:true,conversations:data.conversations.map(c=>({...c,finalAnswers:finalAnswers(c),finalScore:scoreFor(c)}))},null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=h("a",{href:url,download:"freedom-cqa-export.json"});a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);notify("Результаты экспортированы.");}
+function openDialog(c){if(!c)return;const source=isTestConversation(c)?'TEST':c.source;if(source&&data.activeDataset!==source){data.activeDataset=source;resetFilters();save();}detailTab=c.answers?"assessment":"preparation";go("dialog/"+encodeURIComponent(c.id));}
+function downloadJSON(value,filename){const blob=new Blob([JSON.stringify(value,null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=h("a",{href:url,download:filename});a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+function download(){
+ const scope=data.activeDataset==='TEST'?'test':data.activeDataset==='DEMO'?'demo':'production';
+ const included=data.conversations.filter(c=>scope==='test'?isTestConversation(c):scope==='demo'?c.demo&&!isTestConversation(c):!c.demo&&!isTestConversation(c));
+ const ids=new Set(included.map(c=>c.id));
+ downloadJSON({schema:1,prototype:true,scope,synthetic:scope!=='production',exportedAt:new Date().toISOString(),criteria:data.criteria,version:data.version,activeDataset:data.activeDataset,conversations:included.map(c=>({...c,finalAnswers:finalAnswers(c),finalScore:scoreFor(c)})),appeals:data.appeals.filter(a=>ids.has(a.conversationId)),references:data.references.filter(r=>ids.has(r.conversationId))},'freedom-cqa-'+scope+'-export.json');
+ notify(scope==='test'?'Учебные результаты экспортированы отдельно.':scope==='demo'?'Демонстрационные примеры экспортированы отдельно.':'Рабочие результаты экспортированы без учебных и демонстрационных данных.');
+}
+const scopedAppeals=()=>{const ids=new Set(visibleConversations().map(c=>c.id));return data.appeals.filter(a=>ids.has(a.conversationId)&&(data.activeDataset==='TEST'||a.testMode!==true));};
+const validation=createValidationUI({h,icon,btn,tag,modal,notify,getData:()=>data,save,render,openDialog,downloadJSON,runTestAssessment});
 const ai=createAIControls({h,icon,btn,tag,modal,notify,onConfigChange:()=>{const previous=document.querySelector('.ai-status-button');if(previous)previous.replaceWith(ai.statusButton());}});
 function render(){
  stopPlayback();
  const focused=document.activeElement?.id;const caret=document.activeElement?.selectionStart;
  const active=route.startsWith("dialog/")?"dialogs":route;
  const c=route.startsWith("dialog/")?data.conversations.find(c=>encodeURIComponent(c.id)===route.slice(7)):null;
- const openCount=data.appeals.filter(a=>a.status==="open").length;
+ const openCount=scopedAppeals().filter(a=>a.status==="open").length;
  const sidebar=h("aside",{id:"main-navigation",class:"sidebar"+(menuOpen?" is-open":""),inert:matchMedia("(max-width:1000px)").matches&&!menuOpen},
   h("a",{href:"#overview",class:"brand","aria-label":"Freedom CQA — главная"},h("img",{src:"./freedom-logo.svg",alt:"Freedom",width:142,height:34}),h("span",{},"CQA")),
   h("div",{class:"workspace"},h("div",{class:"workspace-icon"},icon("chats",21)),h("div",{},h("strong",{},"Контроль качества"),h("span",{},"Рабочее пространство"))),
   h("p",{class:"nav-label"},"АНАЛИТИКА ДИАЛОГОВ"),
   h("nav",{"aria-label":"Основная навигация"},nav.map(([id,label,ico])=>h("a",{href:"#"+id,class:"nav-item"+(active===id?" active":""),"aria-current":active===id?"page":null},icon(ico,20),h("span",{},label),id==="dialogs"?h("small",{},visibleConversations().length):id==="appeals"&&openCount?h("small",{},openCount):null))),
-  h("div",{class:"sidebar-bottom"},h("div",{class:"sidebar-note"},icon("shield",24),h("strong",{},"Прозрачная оценка"),h("p",{},"От каждого вывода —",h("br"),"к конкретной реплике.")),h("div",{class:"profile"},h("div",{class:"avatar"},"QA"),h("div",{},h("strong",{},"Команда качества"),h("span",{},"Рабочая сессия"))),h("div",{class:"sidebar-footer"},h("span",{},"FREEDOM CQA"),h("span",{},"v0.4"))));
- const title=c?c.title:({overview:"Качество диалогов",dialogs:"Все диалоги",checklists:"Чек-листы оценки",appeals:"Апелляции"}[active]||"Диалог не найден");
- const description=c?"Транскрипт, оценка и основания в одном месте.":({overview:"Понимайте каждый диалог. Улучшайте клиентский опыт.",dialogs:"Оценивайте общение и находите точки роста.",checklists:"Единые правила для понятной и воспроизводимой оценки.",appeals:"Каждая спорная оценка заслуживает внимания."}[active]||"");
+  h("div",{class:"sidebar-bottom"},h("div",{class:"sidebar-note"},icon("shield",24),h("strong",{},"Прозрачная оценка"),h("p",{},"От каждого вывода —",h("br"),"к конкретной реплике.")),h("div",{class:"profile"},h("div",{class:"avatar"},"QA"),h("div",{},h("strong",{},"Команда качества"),h("span",{},"Рабочая сессия"))),h("div",{class:"sidebar-footer"},h("span",{},"FREEDOM CQA"),h("span",{},"v0.5"))));
+ const title=c?c.title:({overview:"Качество диалогов",dialogs:"Все диалоги",checklists:"Чек-листы оценки",appeals:"Апелляции",validation:"Проверка точности"}[active]||"Диалог не найден");
+ const description=c?"Транскрипт, оценка и основания в одном месте.":({overview:"Понимайте каждый диалог. Улучшайте клиентский опыт.",dialogs:"Оценивайте общение и находите точки роста.",checklists:"Единые правила для понятной и воспроизводимой оценки.",appeals:"Каждая спорная оценка заслуживает внимания.",validation:"Эталоны, расхождения и полный сценарий без GPT."}[active]||"");
  const header=h("header",{class:"topbar"},h("div",{class:"breadcrumb"},btn("","menu",()=>toggleMenu(),"icon-button mobile-menu"),h("span",{},"Рабочее пространство"),icon("chevron",14),h("strong",{},c?"Диалог":nav.find(n=>n[0]===active)?.[1]||"CQA")),h("div",{class:"topbar-right"},ai.statusButton(),h("button",{class:"source-switch",onClick:sourceModal},h("span",{class:"tiny-dot green-dot"}),sourceLabel(),icon("down",14)),h("span",{class:"topbar-divider"}),icon("globe",16),h("span",{},"RU"),h("div",{class:"avatar small"},"QA")));
  const menuButton=header.querySelector(".mobile-menu");menuButton.id='navigation-toggle';menuButton.setAttribute('aria-label',menuOpen?'Закрыть меню':'Открыть меню');menuButton.setAttribute('aria-expanded',String(menuOpen));menuButton.setAttribute('aria-controls','main-navigation');
  sidebar.addEventListener('keydown',e=>{if(e.key==='Escape'&&menuOpen){e.preventDefault();menuOpen=false;render();document.getElementById('navigation-toggle')?.focus();}});
@@ -88,6 +101,7 @@ function render(){
   c&&h("a",{href:"#dialogs",class:"back-link"},icon("back",16),"Все диалоги"),
   h("div",{class:"page-heading"},h("div",{},h("div",{class:"eyebrow"},c?c.id:"CONVERSATION QUALITY ANALYTICS"),h("h1",{},title),h("p",{},description)),
    !c&&["overview","dialogs"].includes(active)?btn("Добавить диалоги","plus",uploadModal,"button primary"):active==="checklists"?btn("Добавить критерий","plus",()=>criterionModal(),"button primary"):null));
+ if(active!=='validation'&&(data.activeDataset==='TEST'||isTestConversation(c)))main.append(h('div',{class:'validation-notice test-notice',role:'note'},icon('alert',20),h('div',{},h('strong',{},'Учебный режим · без GPT'),h('p',{},'Значения задаются для проверки интерфейса. Это не оценка качества диалога и не результат работы модели.'))));
  if(["overview","dialogs"].includes(active)&&!c)main.append(sourceBar(),preparationBar());
  if(!lastSaveSucceeded)main.append(h('section',{class:'source-bar',role:'alert'},h('div',{},h('strong',{},'Изменения пока только в памяти'),h('p',{},'Браузер не сохранил данные. Экспортируйте результаты до закрытия или обновления страницы.')),btn('Экспортировать результаты','download',download)));
  if(active==="overview")main.append(overview());
@@ -95,8 +109,9 @@ function render(){
  if(c)main.append(detail(c));
  if(active==="checklists")main.append(checklists());
  if(active==="appeals")main.append(appealsPage());
+ if(active==="validation")main.append(validation.page());
  if(route.startsWith("dialog/")&&!c)main.append(h("section",{class:"card empty-state"},h("h2",{},"Диалог не найден"),h("a",{href:"#dialogs",class:"button"},"Вернуться к списку")));
- main.append(h("footer",{class:"page-footer"},h("span",{},"Freedom CQA · Хакатон 2026"),h("span",{},"Подготовка → GPT → проверка оценки")));
+ main.append(h("footer",{class:"page-footer"},h("span",{},"Freedom CQA · Хакатон 2026"),h("span",{},data.activeDataset==='TEST'?"Учебный ответ → апелляция → пересчёт":"Подготовка → GPT → проверка оценки")));
  if(matchMedia("(max-width:1000px)").matches&&menuOpen)sidebar.prepend(btn("Закрыть меню","close",()=>toggleMenu(false),"text-button mobile-close"));
  document.getElementById("app").replaceChildren(h("div",{class:"app-shell"},h("a",{href:"#main-content",class:"skip-link",onClick:e=>{e.preventDefault();main.setAttribute("tabindex","-1");main.focus();}},"Перейти к содержимому"),sidebar,h("div",{class:"main-shell"},header,main)));
  if(focused){const el=document.getElementById(focused);el?.focus();if(caret!==null&&el?.setSelectionRange)el.setSelectionRange(caret,caret);}
@@ -106,7 +121,7 @@ function overview(){
  const scores=visibleConversations().map(scoreFor).filter(s=>s!==null);
  const assessed=visibleConversations().filter(c=>c.answers).length;
  const count=visibleConversations().length, mean=scores.length?scores.reduce((a,b)=>a+b,0)/scores.length:null;
- const open=data.appeals.filter(a=>a.status==="open").length;
+ const open=scopedAppeals().filter(a=>a.status==="open").length;
  const stat=(label,ico,value,caption,bottom)=>h("div",{class:"stat-card"},h("div",{class:"stat-top"},h("span",{},label),icon(ico,19)),h("div",{class:"stat-value"},value,h("span",{class:"stat-caption"},caption)),h("div",{class:"stat-bottom"},bottom));
  const grid=h("section",{class:"stat-grid","aria-label":"Обзор показателей"},
   stat("Всего диалогов","chats",count,"в пространстве",h("span",{},h("span",{class:"tiny-dot green-dot"}),"RU · KZ · EN")),
@@ -148,7 +163,7 @@ function showEvidence(ids,label="Основание оценки"){
 }
 function detail(c){
  const answers=finalAnswers(c);
- const meta=h("div",{class:"detail-meta"},h("span",{class:"operator-cell"},h("span",{class:"avatar mini"},initials(c.operator)),c.operator),h("span",{class:"language-chip"},c.language),h("span",{},icon("chats",15),c.channel==="voice call"?"Звонок":"Чат"),h("span",{},icon("clock",15),c.date),tag(c.demo?"Демонстрационный пример":c.source==="import"?"Загруженный диалог":"Набор "+c.source));
+ const meta=h("div",{class:"detail-meta"},h("span",{class:"operator-cell"},h("span",{class:"avatar mini"},initials(c.operator)),c.operator),h("span",{class:"language-chip"},c.language),h("span",{},icon("chats",15),c.channel==="voice call"?"Звонок":"Чат"),h("span",{},icon("clock",15),c.date),tag(isTestConversation(c)?"Учебная копия · без GPT":c.demo?"Демонстрационный пример":c.source==="import"?"Загруженный диалог":"Набор "+c.source));
  const transcript=createTranscript(c,{h,icon,save,onMessageSelect:m=>{selectedMessages.set(c.id,m.id);updateMessageContext(c,m);},onMessageAppeal:m=>{selectedMessages.set(c.id,m.id);updateMessageContext(c,m);appealModal(c,null,m);}});
  const selected=c.messages.find(m=>m.id===selectedMessages.get(c.id));
  transcript.append(messageContext(c,selected));
@@ -156,12 +171,14 @@ function detail(c){
  const evaluation=h("section",{class:"card evaluation"},h("div",{class:"panel-heading"},h("h2",{},"Анализ диалога"),tag("Чек-лист v"+(isPreparation||!answers?data.version:c.version))));
  evaluation.append(h('div',{class:'analysis-tabs'},btn('Подготовка к ИИ','sliders',()=>{detailTab='preparation';render();},isPreparation?'selected':''),btn('Оценка','spark',()=>{detailTab='evaluation';render();},!isPreparation?'selected':'')));
  evaluation.querySelectorAll('.analysis-tabs button').forEach(button=>button.setAttribute('aria-pressed',String(button.classList.contains('selected'))));
- evaluation.append(ai.actionPanel(c,{busy:aiBusy.has(c.id),error:aiErrors.get(c.id)||'',onAssess:()=>runAssessment(c)}));
+ if(isTestConversation(c))evaluation.append(validation.testPanel(c));
+ else evaluation.append(ai.actionPanel(c,{busy:aiBusy.has(c.id),error:aiErrors.get(c.id)||'',onAssess:()=>runAssessment(c)}));
+ evaluation.append(h('div',{class:'validation-detail-actions'},(!isTestConversation(c)&&!c.demo&&c.source!=='DEMO')&&btn('Эталон вручную','edit',()=>validation.referenceModal(c),'text-button'),!isTestConversation(c)&&btn('Учебная копия','file',()=>validation.testModal(c),'text-button')));
  if(!answers&&c.assessmentHistory?.length)evaluation.append(h('details',{class:'preparation-details'},h('summary',{},'История предыдущих оценок · '+c.assessmentHistory.length,icon('down',15)),h('div',{class:'history-list'},c.assessmentHistory.map(historyEvent))));
  if(isPreparation){evaluation.append(preparationPanel(c,data.criteria,data.version,{h,icon,btn,tag,showEvidence:ids=>showEvidence(ids,"Кандидат для проверки"),onPrepare:()=>prepareOne(c),busy:preparingId===c.id}));return h('div',{},meta,h('div',{class:'detail-grid'},transcript,evaluation));}
  if(answers&&detailTab==='evaluation')detailTab='assessment';
  if(answers){
- evaluation.append(h("div",{class:"evaluation-summary"},h("div",{},h("span",{},"Итоговая оценка"),h("div",{class:"big-score "+tone(scoreFor(c))},formatScore(scoreFor(c)),h("small",{},"/100"))),h("div",{class:"summary-note"},icon("shield",20),h("span",{},"По "+c.criteria.length+" критериям",h("br"),h("small",{},"С учётом применимости N/A")))));
+ evaluation.append(h("div",{class:"evaluation-summary"},h("div",{},h("span",{},isTestConversation(c)?"Учебный результат":"Итоговая оценка"),h("div",{class:"big-score "+tone(scoreFor(c))},formatScore(scoreFor(c)),h("small",{},"/100"))),h("div",{class:"summary-note"},icon("shield",20),h("span",{},"По "+c.criteria.length+" критериям",h("br"),h("small",{},"С учётом применимости N/A")))));
  evaluation.append(h("div",{class:"detail-tabs"},...["assessment","history"].map((id,i)=>btn(i?"История решений":"По критериям",null,()=>{detailTab=id;render();},detailTab===id?"selected":""))));
  if(detailTab==="assessment"){
  const results=h("div",{class:"criteria-results"});
@@ -177,11 +194,11 @@ function detail(c){
  results.append(h("p",{class:"method-note"},"Баллы рассчитываются пропорционально весам. Критерии N/A исключаются, итог нормируется до 100. Грубые ошибки отмечаются отдельно."));
  evaluation.append(results);
  }else{
- evaluation.append(h("div",{class:"history-list"},h("div",{class:"history-event"},h("span",{class:"timeline-dot"}),h("strong",{},"Исходная оценка"),h("p",{},formatScore(calculate(c.criteria,c.answers))+" / 100 · Чек-лист v"+c.version),h("small",{},c.assessment?"GPT · "+c.assessment.model+" · "+new Date(c.assessment.createdAt).toLocaleString("ru-RU"):"Демонстрационная разметка")),
+ evaluation.append(h("div",{class:"history-list"},h("div",{class:"history-event"},h("span",{class:"timeline-dot"}),h("strong",{},"Исходная оценка"),h("p",{},formatScore(calculate(c.criteria,c.answers))+" / 100 · Чек-лист v"+c.version),h("small",{},c.assessment?(isTestConversation(c)?"Учебный ответ · ":"GPT · ")+c.assessment.model+" · "+new Date(c.assessment.createdAt).toLocaleString("ru-RU"):"Демонстрационная разметка")),
  (c.assessmentHistory||[]).map(historyEvent),
  data.appeals.filter(a=>a.conversationId===c.id).map(a=>h("div",{class:"history-event"},h("span",{class:"timeline-dot"}),h("strong",{},c.criteria.find(r=>r.id===a.criterionId)?.title),h("p",{},a.comment),tag(a.status==="archived"?"Архив · предыдущая оценка":a.status==="open"?"Ожидает проверки":valueLabel(a.original)+" → "+valueLabel(a.decision),a.status==="open"?"amber":"green"),a.reason&&h("p",{},"Решение: "+a.reason)))));
  }
- }else evaluation.append(h("div",{class:"empty-state pending-state"},h("div",{class:"empty-icon"},icon("spark",28)),h("h3",{},"Диалог готов к оценке"),h("p",{},"Запустите оценку кнопкой выше. GPT проверит диалог по активному чек-листу и укажет реплики-основания."),tag("Ожидает анализа")));
+ }else evaluation.append(h("div",{class:"empty-state pending-state"},h("div",{class:"empty-icon"},icon("spark",28)),h("h3",{},"Диалог готов к оценке"),h("p",{},isTestConversation(c)?"Задайте учебный ответ кнопкой выше, затем проверьте переходы по репликам, апелляцию и пересчёт.":"Запустите оценку кнопкой выше. GPT проверит диалог по активному чек-листу и укажет реплики-основания."),tag("Ожидает анализа")));
  return h("div",{},meta,h("div",{class:"detail-grid"},transcript,evaluation));
 }
 function checklists(){
@@ -191,10 +208,10 @@ function checklists(){
  h("div",{class:"info-note"},icon("alert",17),h("span",{},"Ранее оценённые диалоги сохраняют свою версию чек-листа. Новые правила будут передаваться модели при запуске оценки.")));
 }
 function appealsPage(){
- const open=data.appeals.filter(a=>a.status==="open").length;
- return h("div",{},h("div",{class:"appeal-summary"},tag(open+" на рассмотрении","amber"),tag(data.appeals.filter(a=>a.status==="resolved").length+" рассмотрено","green"),tag(data.appeals.filter(a=>a.status==="archived").length+" в архиве")),
- !data.appeals.length?h("section",{class:"card empty-state spacious"},h("div",{class:"empty-icon"},icon("scale",30)),h("h2",{},"Всё прозрачно. Споров пока нет."),h("p",{},"Откройте оценённый диалог и выберите «Оспорить»",h("br"),"у критерия, который требует пересмотра."),h("a",{class:"button",href:"#dialogs"},"Перейти к диалогам",icon("arrow",16))):
- h("div",{class:"appeal-list"},data.appeals.slice().reverse().map(a=>{const c=data.conversations.find(c=>c.id===a.conversationId), rule=c?.criteria.find(r=>r.id===a.criterionId);return h("article",{class:"card appeal-card"},h("div",{class:"appeal-top"},tag(a.status==="archived"?"Архив":a.status==="open"?"На рассмотрении":"Рассмотрено",a.status==="archived"?"neutral":a.status==="open"?"amber":"green"),h("span",{class:"subtle"},a.created)),h("h2",{},a.criterionTitle||rule?.title||"Критерий предыдущей версии"),h("a",{href:"#dialog/"+encodeURIComponent(a.conversationId)},c?.title,icon("up",14)),h("blockquote",{},a.comment),(a.evidenceIds||[]).length>0&&h("p",{class:"appeal-attached"},"Приложены реплики: "+a.evidenceIds.map(id=>"#"+id).join(", ")),
+ const open=scopedAppeals().filter(a=>a.status==="open").length;
+ return h("div",{},h("div",{class:"appeal-summary"},tag(sourceLabel()),tag(open+" на рассмотрении","amber"),tag(scopedAppeals().filter(a=>a.status==="resolved").length+" рассмотрено","green"),tag(scopedAppeals().filter(a=>a.status==="archived").length+" в архиве")),
+ !scopedAppeals().length?h("section",{class:"card empty-state spacious"},h("div",{class:"empty-icon"},icon("scale",30)),h("h2",{},"Всё прозрачно. Споров пока нет."),h("p",{},"Откройте оценённый диалог и выберите «Оспорить»",h("br"),"у критерия, который требует пересмотра."),h("a",{class:"button",href:"#dialogs"},"Перейти к диалогам",icon("arrow",16))):
+ h("div",{class:"appeal-list"},scopedAppeals().slice().reverse().map(a=>{const c=data.conversations.find(c=>c.id===a.conversationId), rule=c?.criteria.find(r=>r.id===a.criterionId);return h("article",{class:"card appeal-card"},h("div",{class:"appeal-top"},isTestConversation(c)&&tag("Учебная апелляция","amber"),tag(a.status==="archived"?"Архив":a.status==="open"?"На рассмотрении":"Рассмотрено",a.status==="archived"?"neutral":a.status==="open"?"amber":"green"),h("span",{class:"subtle"},a.created)),h("h2",{},a.criterionTitle||rule?.title||"Критерий предыдущей версии"),h("a",{href:"#dialog/"+encodeURIComponent(a.conversationId)},c?.title,icon("up",14)),h("blockquote",{},a.comment),(a.evidenceIds||[]).length>0&&h("p",{class:"appeal-attached"},"Приложены реплики: "+a.evidenceIds.map(id=>"#"+id).join(", ")),
  h("div",{class:"appeal-bottom"},h("span",{},"Исходная оценка: ",h("strong",{},valueLabel(a.original)),a.status==="resolved"?" → "+valueLabel(a.decision):""),a.status==="open"&&btn("Рассмотреть","arrow",()=>reviewModal(a,c,rule),"button primary")),
  a.reason&&h("div",{class:"review-note"},h("strong",{},"Решение проверяющего"),h("p",{},a.reason)));})));
 }
@@ -245,8 +262,8 @@ function appealModal(c,rule,message=null){
  if(!current?.answers||assessmentIdentity(current)!==identity)return showError('Оценка обновилась. Откройте апелляцию заново.');
  if(!comment)return showError('Добавьте причину апелляции.');
  if(currentAppeals(current).some(a=>a.criterionId===selected.id&&a.status==='open'))return showError('По этому критерию уже есть открытая апелляция.');
- data.appeals.push({id:'appeal-'+crypto.randomUUID(),conversationId:c.id,criterionId:selected.id,criterionTitle:selected.title,assessmentId:identity,evidenceIds:message?[message.id]:[],comment,original:finalAnswers(current)[selected.id].value,status:'open',created:new Date().toLocaleDateString('ru-RU')});save();close();render();savedNotice('Апелляция сохранена и ожидает проверки.');
- }},h('p',{class:'modal-description'},'Оспаривается оценка критерия. Реплика прикладывается как основание для пересмотра.'),h('label',{class:'form-label',for:'appeal-criterion'},'Какой критерий нужно пересмотреть?'),select,context,explanation,message&&h('blockquote',{class:'attached-message'},h('strong',{},'Реплика #'+message.id+' · '+(roleNames[message.role]||message.role)),h('p',{},message.text)),field('Почему оценку нужно пересмотреть?','comment','','textarea',{required:true,rows:4,maxlength:4000,placeholder:'Объясните, что модель не учла…'}),error,actions('Подать апелляцию','scale'));
+ data.appeals.push({id:'appeal-'+crypto.randomUUID(),conversationId:c.id,criterionId:selected.id,criterionTitle:selected.title,assessmentId:identity,evidenceIds:message?[message.id]:[],comment,testMode:isTestConversation(current),original:finalAnswers(current)[selected.id].value,status:'open',created:new Date().toLocaleDateString('ru-RU')});save();close();render();savedNotice('Апелляция сохранена и ожидает проверки.');
+ }},h('p',{class:'modal-description'},'Оспаривается оценка критерия. Реплика прикладывается как основание для пересмотра.'),h('label',{class:'form-label',for:'appeal-criterion'},'Какой критерий нужно пересмотреть?'),select,context,explanation,message&&h('blockquote',{class:'attached-message'},h('strong',{},'Реплика #'+message.id+' · '+(roleNames[message.role]||message.role)),h('p',{},message.text)),field('Почему оценку нужно пересмотреть?','comment','','textarea',{required:true,rows:4,maxlength:4000,placeholder:isTestConversation(c)?'Комментарий для проверки учебной апелляции…':'Объясните, что модель не учла…'}),error,actions('Подать апелляцию','scale'));
  });
 }
 function reviewModal(a,c,rule){
@@ -300,14 +317,14 @@ async function syncDataset(group){
  finally{syncing=false;render();}
 }
 function sourceBar(){
- const list=visibleConversations(),history=data.syncHistory[data.activeDataset],isApi=!['DEMO','import'].includes(data.activeDataset);
+ const list=visibleConversations(),history=data.syncHistory[data.activeDataset],isApi=!['DEMO','import','TEST'].includes(data.activeDataset);
  const connect=btn(syncing?'Загрузка…':isApi?'Обновить набор':'Подключить DEV','download',()=>syncDataset(isApi?data.activeDataset:'DEV'),'button source-connect');connect.disabled=syncing;
- return h('section',{class:'source-bar','aria-label':'Источник диалогов'},h('div',{class:'source-info'},h('span',{class:'source-icon'},icon('globe',21)),h('div',{},h('strong',{},sourceLabel()),h('p',{},isApi?list.filter(c=>c.channel==='agent chat').length+' чатов · '+list.filter(c=>c.channel==='voice call').length+' звонков'+(history?' · Обновлено '+new Date(history.at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}):''):data.activeDataset==='DEMO'?'Примеры с демонстрационными оценками':'Диалоги из загруженных файлов'))),h('div',{class:'source-actions'},btn('Выбрать источник','sliders',sourceModal,'text-button'),connect),syncError&&h('p',{class:'source-error',role:'alert'},syncError));
+ return h('section',{class:'source-bar','aria-label':'Источник диалогов'},h('div',{class:'source-info'},h('span',{class:'source-icon'},icon('globe',21)),h('div',{},h('strong',{},sourceLabel()),h('p',{},isApi?list.filter(c=>c.channel==='agent chat').length+' чатов · '+list.filter(c=>c.channel==='voice call').length+' звонков'+(history?' · Обновлено '+new Date(history.at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}):''):data.activeDataset==='TEST'?'Изолированные копии для проверки оценки и апелляций':data.activeDataset==='DEMO'?'Примеры с демонстрационными оценками':'Диалоги из загруженных файлов'))),h('div',{class:'source-actions'},btn('Выбрать источник','sliders',sourceModal,'text-button'),connect),syncError&&h('p',{class:'source-error',role:'alert'},syncError));
 }
 function sourceModal(){
  modal('Источник диалогов',({close,error,showError})=>{
-  const sources=[...new Set(['DEMO',...Object.keys(data.syncHistory),...data.conversations.map(c=>c.source)])];
-  return h('div',{class:'modal-content'},h('p',{class:'modal-description'},'Данные API и демонстрационные примеры показываются отдельно.'),h('div',{class:'source-options'},sources.map(source=>btn((source==='DEMO'?'Демопримеры':source==='import'?'Импорт JSON':source)+' · '+data.conversations.filter(c=>c.source===source).length,'chats',()=>{data.activeDataset=source;resetFilters();save();close();go('dialogs');render();},'button'+(data.activeDataset===source?' selected-source':'')))),h('form',{onSubmit:e=>{e.preventDefault();const group=String(new FormData(e.currentTarget).get('group')).trim();if(!/^[A-Za-z0-9_-]{1,64}$/.test(group))return showError('ID может содержать латинские буквы, цифры, дефис и подчёркивание.');close();go('dialogs');syncDataset(group);}},field('ID набора организаторов','group','DEV','text',{required:true,maxlength:64}),h('p',{class:'modal-description'},'Сейчас доступен DEV. На контрольном этапе укажите ID нового набора.'),error,h('div',{class:'modal-actions'},btn('Импорт JSON','upload',()=>{close();uploadModal();}),h('button',{class:'button primary',type:'submit',disabled:syncing},'Загрузить из API'))));
+  const sources=[...new Set(['DEMO',...Object.keys(data.syncHistory),...data.conversations.map(c=>isTestConversation(c)?'TEST':c.source)])];
+  return h('div',{class:'modal-content'},h('p',{class:'modal-description'},'Данные API и демонстрационные примеры показываются отдельно.'),h('div',{class:'source-options'},sources.map(source=>btn((source==='TEST'?'Учебные копии':source==='DEMO'?'Демопримеры':source==='import'?'Импорт JSON':source)+' · '+sourceConversations(source).length,'chats',()=>{data.activeDataset=source;resetFilters();save();close();go('dialogs');render();},'button'+(data.activeDataset===source?' selected-source':'')))),h('form',{onSubmit:e=>{e.preventDefault();const group=String(new FormData(e.currentTarget).get('group')).trim();if(!/^[A-Za-z0-9_-]{1,64}$/.test(group))return showError('ID может содержать латинские буквы, цифры, дефис и подчёркивание.');close();go('dialogs');syncDataset(group);}},field('ID набора организаторов','group','DEV','text',{required:true,maxlength:64}),h('p',{class:'modal-description'},'Сейчас доступен DEV. На контрольном этапе укажите ID нового набора.'),error,h('div',{class:'modal-actions'},btn('Импорт JSON','upload',()=>{close();uploadModal();}),h('button',{class:'button primary',type:'submit',disabled:syncing},'Загрузить из API'))));
  });
 }
 
@@ -328,7 +345,7 @@ function preparationBar(){
  const action=btn(batchPreparing?'Обработано '+batchProgress+' / '+list.length:'Подготовить набор','sliders',prepareDataset,'button');action.disabled=batchPreparing||!!preparingId||!list.length;
  return h('section',{class:'preparation-bar','aria-label':'Подготовка набора к ИИ'},h('div',{},h('strong',{},'Перед оценкой — проверка данных'),h('p',{role:'status','aria-live':'polite'},'Подготовлено '+prepared.length+' из '+list.length+' · Чек-лист v'+data.version+(blocked?' · Требуют исправления: '+blocked:''))),action);
 }
-function historyEvent(run){return h('div',{class:'history-event'},h('span',{class:'timeline-dot'}),h('strong',{},'Предыдущая оценка'),h('p',{},formatScore(calculate(run.criteria,run.finalAnswers||run.answers))+' / 100 · Чек-лист v'+run.version),h('small',{},(run.assessment?.model||'Демонстрационная разметка')+(run.finalAnswers?' · с учётом ручных решений':'')),run.archiveReason&&h('p',{},run.archiveReason));}
+function historyEvent(run){return h('div',{class:'history-event'},h('span',{class:'timeline-dot'}),h('strong',{},'Предыдущая оценка'),h('p',{},formatScore(calculate(run.criteria,run.finalAnswers||run.answers))+' / 100 · Чек-лист v'+run.version),h('small',{},(run.assessment?.provider==='fixture'?'Учебный ответ · без GPT':run.assessment?.model||'Демонстрационная разметка')+(run.finalAnswers?' · с учётом ручных решений':'')),run.archiveReason&&h('p',{},run.archiveReason));}
 function messageContext(c,message){
  const box=h('div',{class:'message-context',id:'message-context','aria-live':'polite'});
  if(!message){box.append(h('p',{},'Выберите реплику, чтобы увидеть связанные критерии.'));return box;}
@@ -338,7 +355,24 @@ function messageContext(c,message){
  return box;
 }
 function updateMessageContext(c,message){document.getElementById('message-context')?.replaceWith(messageContext(c,message));}
+async function runTestAssessment(c,options){
+ if(!isTestConversation(c))throw Error('Учебную оценку можно сохранить только в отдельной копии.');
+ if(aiBusy.has(c.id))throw Error('Дождитесь завершения текущего запуска.');
+ const rules=structuredClone(data.criteria),version=data.version,identity=assessmentIdentity(c),key=preprocessingKey(c,rules,version);
+ aiBusy.add(c.id);
+ try{
+  const result=await createTestAssessment(c,rules,version,options);
+  const current=data.conversations.find(item=>item.id===c.id);
+  if(!current||!isTestConversation(current)||assessmentIdentity(current)!==identity||preprocessingKey(current,rules,version)!==key)throw Error('Учебный диалог изменился. Откройте актуальную копию.');
+  installAssessment(current,result,data.appeals);
+  data.activeDataset='TEST';detailTab='assessment';const saved=save();
+  if(route!=='dialog/'+encodeURIComponent(c.id))openDialog(current);else render();
+  if(saved)notify('Учебный результат сохранён. GPT не вызывался. Можно проверить апелляцию.');
+  return saved;
+ }finally{aiBusy.delete(c.id);}
+}
 async function runAssessment(c){
+ if(isTestConversation(c)){notify('Учебные копии используют только заданные тестовые ответы.');return;}
  if(aiBusy.has(c.id))return;
  if(!ai.config.configured){ai.settings();return;}
  const rules=structuredClone(data.criteria),version=data.version,identity=assessmentIdentity(c);

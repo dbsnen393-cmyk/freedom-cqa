@@ -1,3 +1,4 @@
+import {isTestConversation} from './offline-assessment.js';
 const own=(object,key)=>Object.prototype.hasOwnProperty.call(object,key);
 const record=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const clone=value=>structuredClone(value);
@@ -35,6 +36,8 @@ function validateResult(conversation,result,appeals){
  if(typeof result.sourceFingerprint!=='string'||!FINGERPRINT.test(result.sourceFingerprint)||typeof result.checklistFingerprint!=='string'||!FINGERPRINT.test(result.checklistFingerprint))fail();
  const metadata=result.assessment;
  if(!record(metadata)||typeof metadata.id!=='string'||!/^[A-Za-z0-9_.:-]{1,160}$/.test(metadata.id)||typeof metadata.createdAt!=='string'||!Number.isFinite(Date.parse(metadata.createdAt))||typeof metadata.provider!=='string'||!metadata.provider||typeof metadata.model!=='string'||!metadata.model)fail();
+ const targetTest=isTestConversation(conversation),resultTest=metadata.provider==='fixture'||metadata.testMode===true||result.testMode===true;
+ if(targetTest!==resultTest||(targetTest&&metadata.provider!=='fixture'))fail();
  const messageIds=new Set(conversation.messages.map(message=>message.id)),criterionIds=new Set();
  for(const rule of result.criteria){
   if(!record(rule)||typeof rule.id!=='string'||!rule.id||criterionIds.has(rule.id)||!['boolean','scale','flag'].includes(rule.type)||typeof rule.allowNA!=='boolean'||!Number.isFinite(rule.weight)||rule.weight<0||typeof rule.title!=='string'||!rule.title.trim()||typeof rule.description!=='string'||!rule.description.trim())fail();

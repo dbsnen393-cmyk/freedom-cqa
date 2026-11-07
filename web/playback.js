@@ -8,16 +8,17 @@ export function createTranscript(c,{h,icon,save,onMessageSelect}){
  let entries=timelineEntries(c),time=initial.time,playing=false,duration=0,durationKnown=false,rate=initial.rate,follow=true,lastId=null,timer=null,alive=true,ready=!voice,focusedId=initial.focusedId??null;
  const rows=new Map(),chips=new Map(),lanes=new Map(),markers=new Map();
  let selectedId=c.messages.some(m=>m.id===initial.selectedId)?initial.selectedId:null;
+ let requestedMessageId=initial.requestedMessageId??null,statusNotice='',playRequest=0;
  let drag=null,observer=null,resizeFrame=null,lastWidth=0;
  const participantKey=m=>m.role==='system'?'system':m.participantId||m.role;
  const participantName=m=>c.participants.find(p=>p.id===m.participantId)?.label||({system:'Система',bot:'Бот',operator:'Оператор',client:'Клиент'}[m.role])||m.role;
  const endTime=()=>voice&&durationKnown?duration:(entries.at(-1)?.at||0);
  const axisSpan=()=>endTime()>0?endTime():1;
  const audio=voice&&c.audioUrl?h('audio',{src:c.audioUrl,preload:'none'}):null;
- const status=h('span',{class:'playback-status',role:'status'},voice?(audio?'Запись загружается при воспроизведении':'Аудиозапись не предоставлена'):'Навигация по переписке');
+ const status=h('span',{class:'playback-status',role:'status'},voice?(audio?'Запись загружается при воспроизведении':'Аудиозапись не предоставлена'):'Переписка без аудио');
  const current=h('strong',{class:'current-speaker'},'Начало диалога');
  const elapsed=h('span',{class:'player-time'});
- const toggle=h('button',{type:'button',class:'player-play','aria-label':voice?'Воспроизвести запись':'Запустить таймлайн','aria-pressed':'false',disabled:voice&&!audio,onClick:()=>playing?pause():play(true)});
+ const toggle=h('button',{type:'button',class:'player-play','aria-label':voice?'Воспроизвести запись':'Запустить автопрокрутку','aria-pressed':'false',disabled:voice&&!audio,onClick:()=>playing?pause():play(true)});
  const rateSelect=h('select',{'aria-label':'Скорость воспроизведения',onChange:e=>{rate=Number(e.target.value);if(audio)audio.playbackRate=rate;}},(voice?[0.75,1,1.25,1.5,2]:[1,4,8,16]).map(v=>h('option',{value:v,selected:v===rate},v+'×')));
  const ruler=h('div',{class:'track-ruler',role:'slider',tabindex:'0','aria-label':voice?'Позиция записи':'Позиция переписки','aria-orientation':'horizontal','aria-valuemin':'0','aria-describedby':'conversation-track-help',onKeyDown:event=>{
   if(endTime()<=0)return;
@@ -112,22 +113,35 @@ export function createTranscript(c,{h,icon,save,onMessageSelect}){
   toggle.disabled=voice?!audio:end<=0;repaint();
   if(focusedMarker)for(const[button,entry]of markers)if(String(entry.message.id)===focusedMarker){button.focus({preventScroll:true});break;}
  }
- function setPlaying(value){playing=value;setPlayIcon(value);toggle.setAttribute('aria-label',value?'Приостановить':voice?'Воспроизвести запись':'Запустить таймлайн');toggle.setAttribute('aria-pressed',String(value));}
- function pause(){if(audio)audio.pause();clearInterval(timer);setPlaying(false);if(!audio)status.textContent='На паузе';}
+ function showStatus(text){status.textContent=statusNotice||text;}
+ function notice(text='',tone=''){statusNotice=text;status.classList.toggle('is-warning',tone==='warning');status.classList.toggle('is-error',tone==='error');if(text)status.textContent=text;for(const[id,row]of rows){const hint=row.querySelector('.message-audio-notice');if(hint){hint.hidden=!(tone==='warning'&&id===requestedMessageId);hint.textContent=hint.hidden?'':text;}}if(tone==='warning')scrollToRow(requestedMessageId);}
+ function setPlaying(value){playing=value;setPlayIcon(value);toggle.setAttribute('aria-label',value?'Приостановить':voice?'Воспроизвести запись':'Запустить автопрокрутку');toggle.setAttribute('aria-pressed',String(value));}
+ function pause(){playRequest++;if(audio)audio.pause();clearInterval(timer);setPlaying(false);if(!audio)status.textContent='Автопрокрутка на паузе · без аудио';}
+ function validRequestedTarget(){
+  if(!audio||requestedMessageId===null)return true;
+  const entry=entries.find(item=>item.message.id===requestedMessageId);
+  if(entry&&(!ready||!durationKnown||entry.at<duration))return true;
+  notice(entry?'На выбранном таймкоде запись уже закончилась ('+formatTime(duration)+'). Проверьте синхронизацию.':'У реплики нет позиции на шкале записи. Проверьте синхронизацию.','warning');
+  pause();time=Number.isFinite(audio.currentTime)?audio.currentTime:0;
+  return false;
+ }
  async function play(manual=false){
   if(voice&&!audio){status.textContent='Для этого диалога запись не предоставлена.';return;}
   if(audio){
+   if(!validRequestedTarget())return;
    // A failed media element stays failed until load() resets it. Reload only on
    // a deliberate retry; loadedmetadata will restore the requested time and rate.
    if(manual&&audio.error){ready=false;durationKnown=false;audio.load();}
+   notice();
    if(ready&&durationKnown&&time>=duration){focusedId=null;seek(0,follow);}
    if(manual&&follow){repaint(true);scrollToRow(lastId,true);}
-   status.textContent=ready?'Воспроизведение':'Загрузка записи…';
-   try{await audio.play();}catch{if(alive){status.textContent='Не удалось запустить запись. Попробуйте ещё раз.';setPlaying(false);}}
+   showStatus(ready?'Воспроизведение':'Загрузка записи…');
+   const request=++playRequest;
+   try{await audio.play();}catch{if(alive&&request===playRequest){if(!statusNotice)notice('Не удалось запустить запись. Попробуйте ещё раз.','error');setPlaying(false);}}
   }
-  else{if(time>=endTime()){time=0;focusedId=null;}setPlaying(true);status.textContent='Воспроизведение переписки';repaint(follow);if(manual&&follow)scrollToRow(lastId,true);clearInterval(timer);let previous=performance.now();timer=setInterval(()=>{const now=performance.now();time=Math.min(endTime(),time+(now-previous)/1000*rate);previous=now;repaint();if(time>=endTime()){pause();status.textContent='Конец переписки';}},100);}
+  else{if(time>=endTime()){time=0;focusedId=null;}setPlaying(true);status.textContent='Автопрокрутка переписки · без аудио';repaint(follow);if(manual&&follow)scrollToRow(lastId,true);clearInterval(timer);let previous=performance.now();timer=setInterval(()=>{const now=performance.now();time=Math.min(endTime(),time+(now-previous)/1000*rate);previous=now;repaint();if(time>=endTime()){pause();status.textContent='Конец переписки · без аудио';}},100);}
  }
- function seek(target,scroll=false){if(!Number.isFinite(target))return;time=Math.max(0,Math.min(target,endTime()));if(audio&&ready)audio.currentTime=time;repaint(scroll);}
+ function seek(target,scroll=false,fromMessage=false){if(!Number.isFinite(target))return;if(!fromMessage)requestedMessageId=null;notice();time=Math.max(0,Math.min(target,endTime()));if(audio&&ready)audio.currentTime=time;repaint(scroll);if(audio)showStatus(playing?'Воспроизведение':ready?'На паузе':'Запись загружается при воспроизведении');}
  function seekPointer(event){const rect=plot.getBoundingClientRect();seek(Math.max(0,Math.min(1,(event.clientX-rect.left)/Math.max(1,rect.width)))*endTime(),true);showHover(event);}
  function showHover(event){
   if(endTime()<=0&&!entries.length){hover.hidden=true;return;}
@@ -136,28 +150,30 @@ export function createTranscript(c,{h,icon,save,onMessageSelect}){
   hover.textContent=formatTime(entry?entry.at:fraction*endTime())+(entry?' · #'+entry.message.id:'');hover.style.left='clamp(32px, '+fraction*100+'%, calc(100% - 32px))';hover.hidden=false;
  }
  function finishScrub(){if(!drag)return;const{resume,id}=drag;drag=null;if(plot.hasPointerCapture(id))plot.releasePointerCapture(id);plot.classList.remove('is-scrubbing');hover.hidden=true;if(resume&&alive)play();}
- function selectMessage(message,{seekToTime=true,notify=true}={}){
+ function selectMessage(message,{seekToTime=true,notify=true,listen=false}={}){
   selectedId=message.id;
   for(const[id,row]of rows){const selected=id===selectedId;row.classList.toggle('is-selected',selected);const badge=row.querySelector('.message-selection-label');if(badge)badge.hidden=!selected;}
-  if(seekToTime)seekToMessage(message.id);else updateMarkers();
+  if(seekToTime)seekToMessage(message.id,listen);else updateMarkers();
   if(notify&&typeof onMessageSelect==='function')onMessageSelect(message,{conversationId:c.id,hasTimestamp:entries.some(entry=>entry.message.id===message.id)});
  }
- function seekToMessage(id){
+ function seekToMessage(id,listen=false){
+  requestedMessageId=id;
   const entry=entries.find(x=>x.message.id===id);
+  if(audio&&!validRequestedTarget()){scrollToRow(id,true);updateMarkers();return;}
   if(!entry){status.textContent='У реплики нет позиции на шкале. Она доступна в транскрипте.';scrollToRow(id,true);updateMarkers();return;}
-  if(voice&&durationKnown&&entry.at>duration){status.textContent='Реплика за пределами записи. Проверьте синхронизацию.';scrollToRow(id,true);updateMarkers();return;}
-  focusedId=id;seek(entry.at,true);scrollToRow(id,true);
+  focusedId=id;seek(entry.at,true,true);scrollToRow(id,true);
+  if(listen&&audio)play(true);
  }
  if(audio){
-  audio.addEventListener('loadedmetadata',()=>{if(!alive)return;ready=true;durationKnown=Number.isFinite(audio.duration)&&audio.duration>=0;duration=durationKnown?audio.duration:0;audio.playbackRate=rate;time=Math.min(time,endTime());audio.currentTime=time;status.textContent=playing?'Воспроизведение':'Запись готова'+(durationKnown?' · '+formatTime(duration):'');renderTrack();});
-  audio.addEventListener('durationchange',()=>{if(alive&&Number.isFinite(audio.duration)&&audio.duration>=0){durationKnown=true;duration=audio.duration;time=Math.min(time,duration);renderTrack();}});
+  audio.addEventListener('loadedmetadata',()=>{if(!alive)return;ready=true;durationKnown=Number.isFinite(audio.duration)&&audio.duration>=0;duration=durationKnown?audio.duration:0;audio.playbackRate=rate;if(validRequestedTarget()){time=Math.min(time,endTime());audio.currentTime=time;showStatus(playing?'Воспроизведение':'Запись готова'+(durationKnown?' · '+formatTime(duration):''));}renderTrack();});
+  audio.addEventListener('durationchange',()=>{if(alive&&ready&&Number.isFinite(audio.duration)&&audio.duration>=0){durationKnown=true;duration=audio.duration;if(validRequestedTarget())time=Math.min(time,duration);renderTrack();}});
   audio.addEventListener('timeupdate',()=>{if(alive&&ready&&!drag){time=audio.currentTime;repaint();}});
-  audio.addEventListener('play',()=>{if(alive){setPlaying(true);status.textContent='Воспроизведение';}});
-  audio.addEventListener('pause',()=>{if(alive){setPlaying(false);status.textContent='На паузе';}});
-  audio.addEventListener('ended',()=>{if(alive){setPlaying(false);status.textContent='Конец записи';}});
-  audio.addEventListener('waiting',()=>{if(alive)status.textContent='Загрузка записи…';});
-  audio.addEventListener('playing',()=>{if(alive)status.textContent='Воспроизведение';});
-  audio.addEventListener('error',()=>{if(alive){status.textContent='Запись недоступна. Проверьте подключение и обновите набор.';setPlaying(false);}});
+  audio.addEventListener('play',()=>{if(alive&&validRequestedTarget()){setPlaying(true);showStatus(ready?'Воспроизведение':'Загрузка записи…');}});
+  audio.addEventListener('pause',()=>{if(alive){setPlaying(false);showStatus('На паузе');}});
+  audio.addEventListener('ended',()=>{if(alive){setPlaying(false);showStatus('Конец записи');}});
+  audio.addEventListener('waiting',()=>{if(alive&&!status.classList.contains('is-warning')&&!status.classList.contains('is-error'))notice('Загрузка записи…');});
+  audio.addEventListener('playing',()=>{if(alive&&validRequestedTarget()){notice();showStatus('Воспроизведение');}});
+  audio.addEventListener('error',()=>{if(alive){notice('Запись недоступна. Проверьте подключение и повторите воспроизведение.','error');setPlaying(false);}});
  }
  const controls=h('div',{class:'playback-box'},h('div',{class:'player-heading'},icon(voice?'headphones':'chats',18),h('strong',{},voice?'Запись разговора':'Таймлайн переписки'),status),h('div',{class:'player-controls'},toggle,h('div',{class:'player-position'},elapsed,current),rateSelect),track,h('div',{class:'track-options'},h('label',{class:'follow-control'},h('input',{type:'checkbox',checked:true,onChange:e=>follow=e.target.checked}),'Следовать за репликами')),audio);
  if(voice){
@@ -169,7 +185,8 @@ export function createTranscript(c,{h,icon,save,onMessageSelect}){
  const hasTextSelection=()=>{const selection=document.getSelection();return !!selection&&!selection.isCollapsed&&selection.toString().length>0;};
  const messages=h('div',{class:'messages',tabindex:'0','aria-label':'Реплики диалога'},c.messages.map(m=>{
   const p=c.participants.find(p=>p.id===m.participantId),roleName=participantName(m),validTime=Number.isFinite(m.atSeconds)&&m.atSeconds>=0;
-  const stamp=h('button',{type:'button',class:'timestamp',disabled:!validTime,title:m.sourceTimestamp,'aria-label':'Выбрать реплику '+m.id+(validTime?' на '+formatTime(m.atSeconds):' без таймкода'),onClick:event=>{event.stopPropagation();selectMessage(m);}},formatTime(m.atSeconds));
+  const canListen=!!audio&&m.role!=='system';
+  const stamp=h('button',{type:'button',class:'timestamp',disabled:!validTime,title:canListen?'Слушать реплику '+m.id+' с '+formatTime(m.atSeconds):m.sourceTimestamp,'aria-label':canListen?'Слушать реплику '+m.id+' с '+formatTime(m.atSeconds):'Перейти к реплике '+m.id+(validTime?' на '+formatTime(m.atSeconds):' без таймкода'),onClick:event=>{event.stopPropagation();selectMessage(m,{listen:canListen});}},canListen&&icon('headphones',12),formatTime(m.atSeconds));
   let pointerStart=null,dragged=false;
   const row=h('article',{
    id:'message-'+m.id,'data-id':m.id,'data-uid':m.uid,tabindex:'0',class:'message message-interactive '+m.role+(selectedId===m.id?' is-selected':''),
@@ -179,12 +196,12 @@ export function createTranscript(c,{h,icon,save,onMessageSelect}){
    onPointerUp:()=>{pointerStart=null;},onPointerCancel:()=>{pointerStart=null;dragged=true;},
    onClick:event=>{if(interactiveTarget(event.target))return;if(dragged||hasTextSelection()){dragged=false;return;}selectMessage(m);},
    onKeyDown:event=>{if(event.target!==event.currentTarget||!['Enter',' ','Spacebar'].includes(event.key))return;event.preventDefault();selectMessage(m);}
-  },h('div',{class:'message-label'},h('span',{},p?h('b',{class:'speaker-number'},String(p.number).padStart(2,'0')):null,roleName),stamp,h('span',{class:'message-number',title:m.uid},'#'+String(m.id).padStart(3,'0'))),h('p',{},m.text),h('span',{class:'message-selection-label',hidden:selectedId!==m.id},'Выбрана'),h('div',{class:'evidence-marker'},icon('check',12),'Основание оценки'));
+  },h('div',{class:'message-label'},h('span',{},p?h('b',{class:'speaker-number'},String(p.number).padStart(2,'0')):null,roleName),stamp,h('span',{class:'message-number',title:m.uid},'#'+String(m.id).padStart(3,'0'))),h('p',{},m.text),h('span',{class:'message-selection-label',hidden:selectedId!==m.id},'Выбрана'),h('p',{class:'message-audio-notice',hidden:true}),h('div',{class:'evidence-marker'},icon('check',12),'Основание оценки'));
   rows.set(m.id,row);return row;
  }));
- const section=h('section',{class:'card transcript'},h('div',{class:'panel-heading'},h('h2',{},'Транскрипт'),h('span',{class:'subtle'},c.messages.length+' реплик')),controls,h('p',{id:'conversation-track-help',class:'track-keyboard-help'},'Шкала: нажмите или перетащите указатель. Клавиши ← и → — одна секунда, Home и End — начало и конец.'),h('p',{id:'message-selection-help',class:'message-interaction-hint'},'Нажмите метку на дорожке или реплику для перехода. С клавиатуры — Enter или пробел.'),messages,h('div',{class:'transcript-foot'},icon('shield',15),'Номера участников закреплены за ролями · система отдельно'));
+ const section=h('section',{class:'card transcript'},h('div',{class:'panel-heading'},h('h2',{},'Транскрипт'),h('span',{class:'subtle'},c.messages.length+' реплик')),controls,h('p',{id:'conversation-track-help',class:'track-keyboard-help'},'Шкала: нажмите или перетащите указатель. Клавиши ← и → — одна секунда, Home и End — начало и конец.'),h('p',{id:'message-selection-help',class:'message-interaction-hint'},audio?'Нажмите время с наушниками, чтобы слушать реплику. Текст и метки на дорожке — только переход. С клавиатуры — Enter или пробел.':voice?'Аудиозапись не предоставлена. Текст и метки на дорожке позволяют перейти к реплике.':'Переписка без аудио. Нажмите метку на дорожке или реплику для перехода. Кнопка запуска включает автопрокрутку.'),messages,h('div',{class:'transcript-foot'},icon('shield',15),'Номера участников закреплены за ролями · система отдельно'));
  window.addEventListener('blur',finishScrub);
- live={seekMessage:seekToMessage,destroy(){positions.set(c.id,{time,playing:playing||!!drag?.resume,rate,selectedId,focusedId});alive=false;clearInterval(timer);if(resizeFrame)cancelAnimationFrame(resizeFrame);observer?.disconnect();window.removeEventListener('blur',finishScrub);finishScrub();audio?.pause();if(audio){audio.removeAttribute('src');audio.load();}}};
+ live={seekMessage:seekToMessage,destroy(){positions.set(c.id,{time,playing:playing||!!drag?.resume,rate,selectedId,focusedId,requestedMessageId});alive=false;clearInterval(timer);if(resizeFrame)cancelAnimationFrame(resizeFrame);observer?.disconnect();window.removeEventListener('blur',finishScrub);finishScrub();audio?.pause();if(audio){audio.removeAttribute('src');audio.load();}}};
  setPlayIcon(false);
  queueMicrotask(()=>{if(!alive)return;renderTrack();if(typeof ResizeObserver==='function'){observer=new ResizeObserver(()=>{const width=plot.getBoundingClientRect().width;if(Math.abs(width-lastWidth)<1)return;if(resizeFrame)cancelAnimationFrame(resizeFrame);resizeFrame=requestAnimationFrame(()=>{resizeFrame=null;renderTrack();});});observer.observe(plot);}if(initial.playing)play();});
  return section;

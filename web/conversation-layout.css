@@ -31,3 +31,11 @@
 .conversation-page .evaluation{min-width:0}
 @media(min-width:761px){.conversation-page .evaluation .criterion-result-main{display:grid;grid-template-columns:minmax(0,1fr) minmax(270px,.85fr);gap:16px;align-items:center}.conversation-page .evaluation .criterion-metrics{margin-top:0}.conversation-page .evaluation .summary-note{display:flex}}
 @media(max-width:600px){.conversation-page>.page-heading h1{font-size:23px}.conversation-page .transcript .playback-box{grid-template-columns:minmax(0,1fr);padding:11px 13px;gap:9px}.conversation-page .transcript .player-heading{grid-column:1}.conversation-page .transcript .player-controls{grid-column:1}.conversation-page .transcript .playback-status{margin-left:26px}.conversation-page .track-options,.conversation-page .transcript .sync-settings{grid-column:1;justify-self:start}.conversation-page .transcript .sync-settings[open]{grid-column:1}.conversation-page .transcript>.panel-heading{padding:12px 13px}.conversation-page .transcript .message-interaction-hint{padding:7px 13px}.conversation-page .detail-grid>.transcript .messages{height:clamp(230px,40dvh,340px);padding:13px;gap:12px}.conversation-page .transcript .message{max-width:96%}.conversation-page .transcript .transcript-foot{padding:8px 13px}.conversation-page .transcript .message-context{padding:9px 13px}}
+
+/* Keep unavailable audio distinct from an ordinary paused state. */
+.transcript .playback-status.is-warning{color:#8a570b;font-weight:600}
+.transcript .playback-status.is-error{color:#a53333;font-weight:600}
+.transcript .timestamp{display:inline-flex;align-items:center;gap:4px}
+.transcript .timestamp>svg{flex:none}
+
+.transcript .message .message-audio-notice{color:#8a570b;font-size:12px;line-height:1.6;margin:9px 0 0;padding-left:9px;border-left:2px solid #b78027}

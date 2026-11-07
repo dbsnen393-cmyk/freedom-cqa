@@ -1,0 +1,33 @@
+/* One conversation workspace: timeline and transcript first, assessment below. */
+.conversation-page>.back-link{margin-bottom:10px}
+.conversation-page>.page-heading{margin-bottom:13px}
+.conversation-page>.page-heading h1{font-size:25px;line-height:1.3}
+.conversation-page>.page-heading .eyebrow{margin-bottom:4px}
+.conversation-page .detail-meta{margin:0 0 14px;gap:10px 16px}
+.conversation-page .detail-grid{grid-template-columns:minmax(0,1fr);gap:20px}
+.conversation-page .detail-grid>.transcript{position:static;top:auto}
+.conversation-page .transcript>.panel-heading{padding:12px 18px}
+.conversation-page .transcript .playback-box{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,260px);gap:8px 16px;padding:12px 18px 10px}
+.conversation-page .transcript .player-heading{align-content:center;min-width:0;row-gap:3px}
+.conversation-page .transcript .playback-status{flex-basis:100%;margin-left:26px;font-size:11px}
+.conversation-page .transcript .player-controls{gap:10px;margin:0;min-width:0}
+.conversation-page .transcript .current-speaker{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.conversation-page .transcript .player-time{font-size:14px}
+.conversation-page .conversation-track{grid-column:1/-1}
+.conversation-page .track-grid{max-height:176px;max-height:clamp(132px,20dvh,176px)}
+.conversation-page .track-note{margin-top:4px;font-size:10px;line-height:1.5}
+.conversation-page .track-options{grid-column:1;margin-top:0;align-self:center}
+.conversation-page .transcript .sync-settings{grid-column:2;justify-self:end;max-width:100%;margin-top:0}
+.conversation-page .transcript .sync-settings[open]{grid-column:1/-1;justify-self:stretch}
+.conversation-page .transcript .message-interaction-hint{padding:8px 18px;font-size:11px;line-height:1.5}
+.conversation-page .detail-grid>.transcript .messages{height:clamp(240px,34dvh,360px);min-height:0;max-height:none;overflow-y:auto;overscroll-behavior-y:auto;scrollbar-gutter:stable;scroll-padding:12px;padding:16px 18px;gap:14px;border-bottom:1px solid var(--line)}
+/* A bounded flex list scrolls its messages; it must never compress their content. */
+.conversation-page .transcript .messages>.message{flex:0 0 auto;min-height:min-content}
+.conversation-page .transcript .message{max-width:min(92%,86ch)}
+.conversation-page .transcript .message.system,.conversation-page .transcript .message.bot{max-width:100%}
+.conversation-page .transcript .transcript-foot{padding:8px 18px;font-size:10px;border-top:0}
+.conversation-page .transcript .message-context{padding:9px 18px}
+.conversation-page .transcript .message-context p{font-size:12px;margin:2px 0;line-height:1.6}
+.conversation-page .evaluation{min-width:0}
+@media(min-width:761px){.conversation-page .evaluation .criterion-result-main{display:grid;grid-template-columns:minmax(0,1fr) minmax(270px,.85fr);gap:16px;align-items:center}.conversation-page .evaluation .criterion-metrics{margin-top:0}.conversation-page .evaluation .summary-note{display:flex}}
+@media(max-width:600px){.conversation-page>.page-heading h1{font-size:23px}.conversation-page .transcript .playback-box{grid-template-columns:minmax(0,1fr);padding:11px 13px;gap:9px}.conversation-page .transcript .player-heading{grid-column:1}.conversation-page .transcript .player-controls{grid-column:1}.conversation-page .transcript .playback-status{margin-left:26px}.conversation-page .track-options,.conversation-page .transcript .sync-settings{grid-column:1;justify-self:start}.conversation-page .transcript .sync-settings[open]{grid-column:1}.conversation-page .transcript>.panel-heading{padding:12px 13px}.conversation-page .transcript .message-interaction-hint{padding:7px 13px}.conversation-page .detail-grid>.transcript .messages{height:clamp(230px,40dvh,340px);padding:13px;gap:12px}.conversation-page .transcript .message{max-width:96%}.conversation-page .transcript .transcript-foot{padding:8px 13px}.conversation-page .transcript .message-context{padding:9px 13px}}

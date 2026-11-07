@@ -1,0 +1,18 @@
+/* Weighted criterion points remain distinct from the raw decision and rubric weight. */
+.score-breakdown{padding:0 23px 18px;color:var(--ink);font-variant-numeric:tabular-nums}
+.score-equation{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px 8px;font-size:13px;line-height:1.7;margin:0}
+.score-equation strong{font-weight:650}
+.score-equation>span{color:var(--muted);font-size:12px}
+.score-explanation{font-size:12px;line-height:1.7;color:var(--muted);margin:5px 0 0}
+.criterion-result>summary.criterion-result-summary{align-items:flex-start;gap:10px}
+.criterion-result-summary>.criterion-index,.criterion-result-summary>svg{margin-top:2px;flex:none}
+.criterion-result-main{display:block;flex:1;min-width:0}
+.criterion-result-main>.criterion-result-title{display:block;font-size:13px;line-height:1.6}
+.criterion-metrics{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,.65fr) minmax(0,1fr);gap:8px 14px;margin-top:10px}
+.criterion-metric{display:flex;flex-direction:column;align-items:flex-start;gap:5px;min-width:0}
+.criterion-metric-label{font-size:11px;font-weight:400;color:var(--muted);line-height:1.5}
+.criterion-metric-value{font-size:13px;line-height:1.6;color:var(--ink);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.criterion-metric-value strong{font-weight:650}
+.criterion-metric-value .tag{font-size:11px;line-height:1.6;padding:2px 6px}
+.criterion-body>p.criterion-calculation{font-size:12px;color:var(--muted);padding:9px 11px;margin:0 0 12px;border-left:2px solid var(--line);background:#f8f9fb;line-height:1.7;font-variant-numeric:tabular-nums}
+@media(max-width:520px){.score-breakdown{padding:0 20px 16px}.score-equation{font-size:13px}.criterion-metrics{gap:8px}.criterion-metric-label{font-size:11px}.criterion-metric-value{font-size:12px}.criterion-result>summary.criterion-result-summary{padding:15px 13px;gap:8px}.criterion-result-summary>.criterion-index{font-size:10px}.criterion-result-main>.criterion-result-title{font-size:13px}.criterion-body>p.criterion-calculation{font-size:12px}}

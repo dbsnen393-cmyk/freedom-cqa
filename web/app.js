@@ -1,4 +1,4 @@
-import {initialCriteria,demoConversations,calculate,valueLabel,formatScore} from "./domain.js";
+import {initialCriteria,demoConversations,calculate,criterionContribution,scoreBreakdown,valueLabel,formatScore} from "./domain.js";
 import {normalizeRecord,upgradeConversation,mergeDataset} from './timeline.js';
 import {createTranscript,stopPlayback,seekMessage} from './playback.js';
 import {preparedConversation,prepareConversation,preparationPanel} from './preparation-ui.js';
@@ -97,10 +97,10 @@ function render(){
  const header=h("header",{class:"topbar"},h("div",{class:"breadcrumb"},btn("","menu",()=>toggleMenu(),"icon-button mobile-menu"),active==="validation"?h("a",{href:"#settings"},"Настройки"):h("span",{},"Рабочее пространство"),icon("chevron",14),h("strong",{},c?"Диалог":active==="validation"?"Проверка точности":active==="settings"?"Настройки":nav.find(n=>n[0]===active)?.[1]||"CQA")),h("div",{class:"topbar-right"},ai.statusButton(),h("button",{class:"source-switch",onClick:sourceModal},h("span",{class:"tiny-dot green-dot"}),h("span",{class:"source-switch-label",title:sourceLabel()},sourceLabel()),icon("down",14))));
  const menuButton=header.querySelector(".mobile-menu");menuButton.id='navigation-toggle';menuButton.setAttribute('aria-label',menuOpen?'Закрыть меню':'Открыть меню');menuButton.setAttribute('aria-expanded',String(menuOpen));menuButton.setAttribute('aria-controls','main-navigation');
  sidebar.addEventListener('keydown',e=>{if(e.key==='Escape'&&menuOpen){e.preventDefault();menuOpen=false;render();document.getElementById('navigation-toggle')?.focus();}});
- const main=h("main",{id:"main-content",class:"main-content"},
+ const main=h("main",{id:"main-content",class:"main-content"+(c?" conversation-page":"")},
   c&&h("a",{href:"#dialogs",class:"back-link"},icon("back",16),"Все диалоги"),
   active==="validation"&&h("a",{href:"#settings",class:"back-link"},icon("back",16),"Настройки"),
-  h("div",{class:"page-heading"},h("div",{},c&&h("div",{class:"eyebrow"},c.id),h("h1",{},title),h("p",{},description)),
+  h("div",{class:"page-heading"},h("div",{},c&&h("div",{class:"eyebrow"},c.id),h("h1",{},title),!c&&h("p",{},description)),
    !c&&["overview","dialogs"].includes(active)?btn("Добавить диалоги","plus",uploadModal,"button primary"):active==="checklists"?btn("Добавить критерий","plus",()=>criterionModal(),"button primary"):null));
  if(!['validation','settings'].includes(active)&&(data.activeDataset==='TEST'||isTestConversation(c)))main.append(h('div',{class:'validation-notice test-notice',role:'note'},icon('alert',20),h('div',{},h('strong',{},'Учебный режим · без ИИ'),h('p',{},'Значения задаются для проверки интерфейса. Это не оценка качества диалога и не результат работы модели.'))));
  if(["overview","dialogs"].includes(active)&&!c)main.append(h("div",{class:"dataset-toolbar"},sourceBar(),preparationBar()));
@@ -186,7 +186,9 @@ function detail(c){
  if(isPreparation){evaluation.append(preparationPanel(c,data.criteria,data.version,{h,icon,btn,tag,showEvidence:ids=>showEvidence(ids,"Кандидат для проверки"),onPrepare:()=>prepareOne(c),busy:preparingId===c.id}));return h('div',{},meta,h('div',{class:'detail-grid'},transcript,evaluation));}
  if(answers&&detailTab==='evaluation')detailTab='assessment';
  if(answers){
- evaluation.append(h("div",{class:"evaluation-summary"},h("div",{},h("span",{},isTestConversation(c)?"Учебный результат":"Итоговая оценка"),h("div",{class:"big-score "+tone(scoreFor(c))},formatScore(scoreFor(c)),h("small",{},"/100"))),h("div",{class:"summary-note"},icon("shield",20),h("span",{},"По "+c.criteria.length+" критериям",h("br"),h("small",{},"С учётом применимости N/A")))));
+ const totals=scoreBreakdown(c.criteria,answers);
+ evaluation.append(h("div",{class:"evaluation-summary"},h("div",{},h("span",{},isTestConversation(c)?"Учебный результат":"Итоговая оценка"),h("div",{class:"big-score "+tone(totals.score)},formatScore(totals.score),h("small",{},"/100"))),h("div",{class:"summary-note"},icon("shield",20),h("span",{},"По "+c.criteria.length+" критериям",h("br"),h("small",{},"С учётом применимости N/A")))));
+ evaluation.append(h('div',{class:'score-breakdown'},totals.applicable?h('p',{class:'score-equation'},h('strong',{},formatScore(totals.earned)+' / '+formatScore(totals.applicable)),h('span',{},'баллов'),h('span',{'aria-hidden':'true'},'→'),h('strong',{},formatScore(totals.score)+' / 100')):h('p',{class:'score-equation'},'Нет применимых критериев с баллами'),h('p',{class:'score-explanation'},totals.excludedWeight?'N/A: '+formatScore(totals.excludedWeight)+' баллов исключено из максимума.':'Все критерии с баллами участвуют в расчёте.',currentAppeals(c).some(a=>a.status==='resolved')?' Учтены решения по апелляциям.':'')));
  evaluation.append(h("div",{class:"detail-tabs"},...["assessment","history"].map((id,i)=>btn(i?"История решений":"По критериям",null,()=>{detailTab=id;render();},detailTab===id?"selected":""))));
  if(detailTab==="assessment"){
  const results=h("div",{class:"criteria-results"});
@@ -194,9 +196,12 @@ function detail(c){
  const a=answers[rule.id];if(!a)continue;
  const bad=rule.type==="flag"?a.value===true:a.value!==null&&(a.value===false||(typeof a.value==="number"&&a.value<Math.max(...rule.scale)));
  const revised=currentAppeals(c).filter(p=>p.criterionId===rule.id&&p.status==="resolved").at(-1);
+ const contribution=criterionContribution(rule,a),rawValue=valueLabel(a.value)+(a.value!==null&&rule.type==='scale'?' / '+Math.max(...rule.scale):'');
+ const metric=(label,value)=>h('span',{class:'criterion-metric'},h('span',{class:'criterion-metric-label'},label),h('span',{class:'criterion-metric-value'},value));
+ const points=rule.type==='flag'?'Без баллов':a.value===null?'Исключён':formatScore(contribution)+' / '+formatScore(rule.weight);
  results.append(h("details",{class:"criterion-result",open:cIndex===3},
- h("summary",{},h("span",{class:"criterion-index"},String(cIndex+1).padStart(2,"0")),h("span",{class:"criterion-result-title"},rule.title,h("small",{},(rule.type==="flag"?"Без баллов":"Вес "+rule.weight)+(revised?" · Пересмотрено":""))),tag(valueLabel(a.value)+(rule.type==="scale"?"/"+Math.max(...rule.scale):""),a.value===null?"neutral":bad?"amber":"green"),icon("down",15)),
- h("div",{class:"criterion-body"},h("p",{},a.reason),revised&&h("p",{class:"review-note"},"Решение проверяющего: "+revised.reason),
+ h("summary",{class:'criterion-result-summary'},h("span",{class:"criterion-index"},String(cIndex+1).padStart(2,"0")),h('span',{class:'criterion-result-main'},h("span",{class:"criterion-result-title"},rule.title,revised&&h("small",{},"Пересмотрено")),h('span',{class:'criterion-metrics'},metric('Значение',tag(rawValue,a.value===null?"neutral":bad?"amber":"green")),metric('Вес',formatScore(rule.weight)),metric('Баллы',h('strong',{},points)))),icon("down",15)),
+ h("div",{class:"criterion-body"},(a.value===null||rule.type==='flag'||rule.type==='scale')&&h('p',{class:'criterion-calculation'},rule.type==='flag'?'Отдельный флаг нарушения. На сумму баллов не влияет.':a.value===null?'Критерий не применим: его вес исключён из итогового расчёта.':formatScore(rule.weight)+' × '+formatScore(a.value)+' / '+formatScore(Math.max(...rule.scale))+' = '+formatScore(contribution)),h("p",{},a.reason),revised&&h("p",{class:"review-note"},"Решение проверяющего: "+revised.reason),
  h("div",{class:"criterion-actions"},btn("Реплики "+a.evidence.join(", "),"chats",()=>showEvidence(a.evidence),"evidence-button"),btn("Оспорить","scale",()=>appealModal(c,rule),"text-button")))));
  }
  results.append(h("p",{class:"method-note"},"Баллы рассчитываются пропорционально весам. Критерии N/A исключаются, итог нормируется до 100. Грубые ошибки отмечаются отдельно."));

@@ -14,15 +14,25 @@ export const initialCriteria              = [
  {id:"closing",title:"Завершение",description:"Оператор подвёл итог или предложил дальнейшую помощь и попрощался.",weight:5,type:"boolean",scale:[],allowNA:true,naRule:"Чат оборвался до возможности завершения."},
  {id:"critical",title:"Грубые ошибки",description:"Оскорбление клиента, предложение платной услуги в обход компании или раскрытие конфиденциальной информации. Отдельный флаг, без баллов.",weight:0,type:"flag",scale:[],allowNA:false,naRule:""}
 ];
-export function calculate(criteria             , answers                              ) {
- if (!answers) return null;
- let earned=0, applicable=0;
- for (const c of criteria) {
-  const a=answers[c.id]; if (!a || a.value===null || c.type==="flag") continue;
-  applicable+=c.weight;
-  earned+=c.weight*(c.type==="scale" ? Number(a.value)/Math.max(...c.scale) : a.value===true?1:0);
+export function criterionContribution(criterion,answer) {
+ if (!answer || answer.value===null || criterion.type==='flag') return null;
+ return criterion.weight*(criterion.type==='scale' ? Number(answer.value)/Math.max(...criterion.scale) : answer.value===true?1:0);
+}
+export function scoreBreakdown(criteria,answers) {
+ let earned=0, applicable=0, excludedWeight=0;
+ if (answers) for (const criterion of criteria) {
+  const answer=answers[criterion.id], contribution=criterionContribution(criterion,answer);
+  if (contribution===null) {
+   if (answer?.value===null && criterion.type!=='flag') excludedWeight+=criterion.weight;
+   continue;
+  }
+  applicable+=criterion.weight;
+  earned+=contribution;
  }
- return applicable ? Math.round(earned/applicable*10000)/100 : null;
+ return {earned,applicable,excludedWeight,score:applicable?Math.round(earned/applicable*10000)/100:null};
+}
+export function calculate(criteria,answers) {
+ return scoreBreakdown(criteria,answers).score;
 }
 export function valueLabel(value       ) { return value===null?"N/A":typeof value==="boolean"?(value?"Да":"Нет"):String(value); }
 export function formatScore(value            ) { return value===null?"—":value.toLocaleString("ru-RU",{maximumFractionDigits:2}); }

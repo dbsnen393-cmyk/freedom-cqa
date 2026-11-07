@@ -163,3 +163,15 @@ body{color:var(--ink)}
 .ai-reassessment .ai-action-panel{margin-top:0}
 .ai-reassessment>summary:hover{background:#f8fafb}
 .validation-detail-actions{padding-top:6px;padding-bottom:6px}
+
+/* Infrequent administration lives outside the everyday review navigation. */
+.settings-link{margin-top:16px}
+.workspace-settings{display:grid;gap:16px;max-width:1080px}
+.workspace-setting{display:flex;align-items:center;gap:18px;padding:24px}
+.setting-symbol{display:grid;place-items:center;flex:none;width:42px;height:42px;border-radius:8px;background:#f1f4f7;color:#526775}
+.setting-copy{flex:1;min-width:0}
+.setting-copy h2{font-size:16px;letter-spacing:-.2px}
+.setting-copy p{font-size:13px;color:var(--muted);margin-top:6px}
+.workspace-setting>.button{flex:none}
+@media(max-width:760px){.workspace-setting{padding:18px;gap:12px;flex-wrap:wrap}.workspace-setting>.button{margin-left:54px}.setting-copy{flex-basis:calc(100% - 54px)}.setting-copy p{font-size:12px}}
+@media(max-width:520px){.workspace-setting>.button{margin-left:0;width:100%}}

@@ -57,7 +57,7 @@ const btn=(text,ico,fn,cls="button")=>h("button",{class:cls,type:"button","aria-
 const tag=(text,tone="neutral",ico)=>h("span",{class:"tag "+tone},ico&&icon(ico,12),text);
 const initials=name=>name.split(" ").slice(0,2).map(x=>x[0]).join("");
 const tone=score=>score===null?"neutral":score>=90?"green":score>=75?"amber":"red";
-const nav=[["overview","Обзор","grid"],["dialogs","Диалоги","chats"],["checklists","Чек-листы","list"],["appeals","Апелляции","scale"],["validation","Проверка точности","checks"]];
+const nav=[["overview","Обзор","grid"],["dialogs","Диалоги","chats"],["checklists","Чек-листы","list"],["appeals","Апелляции","scale"],["settings","Настройки","sliders"]];
 const roleNames={client:"Клиент",operator:"Оператор",system:"Система",bot:"Бот"};
 const go=url=>{location.hash=url;};
 function notify(text){const box=document.getElementById("toast");box.replaceChildren(icon("checks",20),h("span",{},text),btn("","close",()=>box.classList.remove("visible"),"toast-close"));box.classList.add("visible");clearTimeout(notify.timer);notify.timer=setTimeout(()=>box.classList.remove("visible"),5500);}
@@ -84,24 +84,26 @@ function render(){
  stopPlayback();
  const focused=document.activeElement?.id;const caret=document.activeElement?.selectionStart;
  const active=route.startsWith("dialog/")?"dialogs":route;
+ const navActive=active==="validation"?"settings":active;
  const c=route.startsWith("dialog/")?data.conversations.find(c=>encodeURIComponent(c.id)===route.slice(7)):null;
  const openCount=scopedAppeals().filter(a=>a.status==="open").length;
  const sidebar=h("aside",{id:"main-navigation",class:"sidebar"+(menuOpen?" is-open":""),inert:matchMedia("(max-width:1000px)").matches&&!menuOpen},
   h("a",{href:"#overview",class:"brand","aria-label":"Freedom CQA — главная"},h("img",{src:"./freedom-logo.svg",alt:"Freedom",width:142,height:34}),h("span",{},"CQA")),
   h("div",{class:"workspace"},h("strong",{},"Контроль качества")),
   h("p",{class:"nav-label"},"РАЗДЕЛЫ"),
-  h("nav",{"aria-label":"Основная навигация"},nav.map(([id,label,ico])=>h("a",{href:"#"+id,class:"nav-item"+(active===id?" active":""),"aria-current":active===id?"page":null},icon(ico,20),h("span",{},label),id==="dialogs"?h("small",{},visibleConversations().length):id==="appeals"&&openCount?h("small",{},openCount):null))),
+  h("nav",{"aria-label":"Основная навигация"},nav.map(([id,label,ico])=>h("a",{href:"#"+id,class:"nav-item"+(id==="settings"?" settings-link":"")+(navActive===id?" active":""),"aria-current":navActive===id?"page":null},icon(ico,20),h("span",{},label),id==="dialogs"?h("small",{},visibleConversations().length):id==="appeals"&&openCount?h("small",{},openCount):null))),
   h("div",{class:"sidebar-bottom"},h("div",{class:"storage-note"},icon("file",17),h("div",{},h("strong",{},"Данные этого браузера"),h("span",{},"Экспорт доступен в списке диалогов"))),h("div",{class:"sidebar-footer"},h("span",{},"FREEDOM CQA"),h("span",{},"v0.5"))));
- const title=c?c.title:({overview:"Качество диалогов",dialogs:"Все диалоги",checklists:"Чек-листы оценки",appeals:"Апелляции",validation:"Проверка точности"}[active]||"Диалог не найден");
- const description=c?"Реплики, результаты проверки и история решений.":({overview:"Сводка по выбранному набору диалогов.",dialogs:"Поиск, фильтрация и оценка диалогов.",checklists:"Критерии, веса и условия применения.",appeals:"Заявки на пересмотр оценок и принятые решения.",validation:"Сравнение оценок с эталонной разметкой."}[active]||"");
- const header=h("header",{class:"topbar"},h("div",{class:"breadcrumb"},btn("","menu",()=>toggleMenu(),"icon-button mobile-menu"),h("span",{},"Рабочее пространство"),icon("chevron",14),h("strong",{},c?"Диалог":nav.find(n=>n[0]===active)?.[1]||"CQA")),h("div",{class:"topbar-right"},ai.statusButton(),h("button",{class:"source-switch",onClick:sourceModal},h("span",{class:"tiny-dot green-dot"}),h("span",{class:"source-switch-label",title:sourceLabel()},sourceLabel()),icon("down",14))));
+ const title=c?c.title:({overview:"Качество диалогов",dialogs:"Все диалоги",checklists:"Чек-листы оценки",appeals:"Апелляции",settings:"Настройки",validation:"Проверка точности"}[active]||"Диалог не найден");
+ const description=c?"Реплики, результаты проверки и история решений.":({overview:"Сводка по выбранному набору диалогов.",dialogs:"Поиск, фильтрация и оценка диалогов.",checklists:"Критерии, веса и условия применения.",appeals:"Заявки на пересмотр оценок и принятые решения.",settings:"Подключения, источники данных и проверка модели.",validation:"Сравнение оценок с эталонной разметкой."}[active]||"");
+ const header=h("header",{class:"topbar"},h("div",{class:"breadcrumb"},btn("","menu",()=>toggleMenu(),"icon-button mobile-menu"),active==="validation"?h("a",{href:"#settings"},"Настройки"):h("span",{},"Рабочее пространство"),icon("chevron",14),h("strong",{},c?"Диалог":active==="validation"?"Проверка точности":nav.find(n=>n[0]===active)?.[1]||"CQA")),h("div",{class:"topbar-right"},ai.statusButton(),h("button",{class:"source-switch",onClick:sourceModal},h("span",{class:"tiny-dot green-dot"}),h("span",{class:"source-switch-label",title:sourceLabel()},sourceLabel()),icon("down",14))));
  const menuButton=header.querySelector(".mobile-menu");menuButton.id='navigation-toggle';menuButton.setAttribute('aria-label',menuOpen?'Закрыть меню':'Открыть меню');menuButton.setAttribute('aria-expanded',String(menuOpen));menuButton.setAttribute('aria-controls','main-navigation');
  sidebar.addEventListener('keydown',e=>{if(e.key==='Escape'&&menuOpen){e.preventDefault();menuOpen=false;render();document.getElementById('navigation-toggle')?.focus();}});
  const main=h("main",{id:"main-content",class:"main-content"},
   c&&h("a",{href:"#dialogs",class:"back-link"},icon("back",16),"Все диалоги"),
+  active==="validation"&&h("a",{href:"#settings",class:"back-link"},icon("back",16),"Настройки"),
   h("div",{class:"page-heading"},h("div",{},c&&h("div",{class:"eyebrow"},c.id),h("h1",{},title),h("p",{},description)),
    !c&&["overview","dialogs"].includes(active)?btn("Добавить диалоги","plus",uploadModal,"button primary"):active==="checklists"?btn("Добавить критерий","plus",()=>criterionModal(),"button primary"):null));
- if(active!=='validation'&&(data.activeDataset==='TEST'||isTestConversation(c)))main.append(h('div',{class:'validation-notice test-notice',role:'note'},icon('alert',20),h('div',{},h('strong',{},'Учебный режим · без GPT'),h('p',{},'Значения задаются для проверки интерфейса. Это не оценка качества диалога и не результат работы модели.'))));
+ if(!['validation','settings'].includes(active)&&(data.activeDataset==='TEST'||isTestConversation(c)))main.append(h('div',{class:'validation-notice test-notice',role:'note'},icon('alert',20),h('div',{},h('strong',{},'Учебный режим · без GPT'),h('p',{},'Значения задаются для проверки интерфейса. Это не оценка качества диалога и не результат работы модели.'))));
  if(["overview","dialogs"].includes(active)&&!c)main.append(h("div",{class:"dataset-toolbar"},sourceBar(),preparationBar()));
  if(!lastSaveSucceeded)main.append(h('section',{class:'source-bar',role:'alert'},h('div',{},h('strong',{},'Изменения пока только в памяти'),h('p',{},'Браузер не сохранил данные. Экспортируйте результаты до закрытия или обновления страницы.')),btn('Экспортировать результаты','download',download)));
  if(active==="overview")main.append(overview());
@@ -109,6 +111,7 @@ function render(){
  if(c)main.append(detail(c));
  if(active==="checklists")main.append(checklists());
  if(active==="appeals")main.append(appealsPage());
+ if(active==="settings")main.append(settingsPage());
  if(active==="validation")main.append(validation.page());
  if(route.startsWith("dialog/")&&!c)main.append(h("section",{class:"card empty-state"},h("h2",{},"Диалог не найден"),h("a",{href:"#dialogs",class:"button"},"Вернуться к списку")));
  main.append(h("footer",{class:"page-footer"},h("span",{},"Freedom CQA"),h("span",{},"Активный чек-лист v"+data.version)));
@@ -117,6 +120,13 @@ function render(){
  if(focused){const el=document.getElementById(focused);el?.focus();if(caret!==null&&el?.setSelectionRange)el.setSelectionRange(caret,caret);}
 }
 window.addEventListener("hashchange",()=>{route=location.hash.slice(1)||"overview";menuOpen=false;render();window.scrollTo(0,0);});
+function settingsPage(){
+ const setting=(title,description,ico,action)=>h('section',{class:'card workspace-setting'},h('div',{class:'setting-symbol'},icon(ico,21)),h('div',{class:'setting-copy'},h('h2',{},title),h('p',{},description)),action);
+ return h('div',{class:'workspace-settings'},
+  setting('Оценка GPT','Подключение к модели и параметры оценки.','spark',btn('Настроить GPT','sliders',()=>ai.settings())),
+  setting('Источники диалогов','Выбран источник: '+sourceLabel()+'. Диалогов: '+visibleConversations().length+'.','chats',btn('Управление наборами','sliders',sourceModal)),
+  setting('Проверка модели','Сравнение с эталонной разметкой, расхождения и учебные сценарии.','checks',h('a',{class:'button',href:'#validation'},'Проверка точности',icon('arrow',16))));
+}
 function overview(){
  const scores=visibleConversations().map(scoreFor).filter(s=>s!==null);
  const assessed=visibleConversations().filter(c=>c.answers).length;
@@ -163,7 +173,7 @@ function showEvidence(ids,label="Основание оценки"){
 function detail(c){
  const answers=finalAnswers(c);
  const meta=h("div",{class:"detail-meta"},h("span",{class:"operator-cell"},h("span",{class:"avatar mini"},initials(c.operator)),c.operator),h("span",{class:"language-chip"},c.language),h("span",{},icon("chats",15),c.channel==="voice call"?"Звонок":"Чат"),h("span",{},icon("clock",15),c.date),tag(isTestConversation(c)?"Учебная копия · без GPT":c.demo?"Демонстрационный пример":c.source==="import"?"Загруженный диалог":"Набор "+c.source));
- const transcript=createTranscript(c,{h,icon,save,onMessageSelect:m=>{selectedMessages.set(c.id,m.id);updateMessageContext(c,m);},onMessageAppeal:m=>{selectedMessages.set(c.id,m.id);updateMessageContext(c,m);appealModal(c,null,m);}});
+ const transcript=createTranscript(c,{h,icon,save,onMessageSelect:m=>{selectedMessages.set(c.id,m.id);updateMessageContext(c,m);}});
  const selected=c.messages.find(m=>m.id===selectedMessages.get(c.id));
  transcript.append(messageContext(c,selected));
  const isPreparation=detailTab==='preparation'||(!answers&&detailTab==='assessment');
@@ -246,12 +256,11 @@ function criterionModal(existing){
  }},field("Название","title",existing?.title||"","text",{required:true,maxlength:120}),field("Правило оценки","description",existing?.description||"","textarea",{required:true}),h("div",{class:"form-grid"},h("div",{},h("label",{class:"form-label",for:"field-type"},"Тип ответа"),type),weightField),scaleField,h("label",{class:"checkbox-label"},na,"Разрешить N/A"),naField,error,actions("Сохранить версию "+(data.version+1),"check"));
  });
 }
-function appealModal(c,rule,message=null){
+function appealModal(c,rule){
  if(!c.answers){notify('Сначала выполните оценку диалога.');return;}
  const identity=assessmentIdentity(c);
- modal(message?'Апелляция по реплике #'+message.id:'Оспорить оценку',({close,error,showError,actions})=>{
+ modal('Апелляция по критерию',({close,error,showError,actions})=>{
  const rules=c.criteria.filter(r=>c.answers[r.id]);
- if(message)rules.sort((a,b)=>Number(c.answers[b.id].evidence.includes(message.id))-Number(c.answers[a.id].evidence.includes(message.id)));
  const select=h('select',{id:'appeal-criterion',name:'criterion'},rules.map(r=>h('option',{value:r.id,selected:r.id===(rule?.id||rules[0]?.id)},r.title)));
  const context=h('div',{class:'appeal-context'}),explanation=h('p',{class:'modal-description'});
  const update=()=>{const selected=rules.find(r=>r.id===select.value);context.replaceChildren(h('strong',{},selected.title),tag(valueLabel(finalAnswers(c)[selected.id].value)));explanation.textContent=c.answers[selected.id].reason;};select.addEventListener('change',update);update();
@@ -261,8 +270,8 @@ function appealModal(c,rule,message=null){
  if(!current?.answers||assessmentIdentity(current)!==identity)return showError('Оценка обновилась. Откройте апелляцию заново.');
  if(!comment)return showError('Добавьте причину апелляции.');
  if(currentAppeals(current).some(a=>a.criterionId===selected.id&&a.status==='open'))return showError('По этому критерию уже есть открытая апелляция.');
- data.appeals.push({id:'appeal-'+crypto.randomUUID(),conversationId:c.id,criterionId:selected.id,criterionTitle:selected.title,assessmentId:identity,evidenceIds:message?[message.id]:[],comment,testMode:isTestConversation(current),original:finalAnswers(current)[selected.id].value,status:'open',created:new Date().toLocaleDateString('ru-RU')});save();close();render();savedNotice('Апелляция сохранена и ожидает проверки.');
- }},h('p',{class:'modal-description'},'Оспаривается оценка критерия. Реплика прикладывается как основание для пересмотра.'),h('label',{class:'form-label',for:'appeal-criterion'},'Какой критерий нужно пересмотреть?'),select,context,explanation,message&&h('blockquote',{class:'attached-message'},h('strong',{},'Реплика #'+message.id+' · '+(roleNames[message.role]||message.role)),h('p',{},message.text)),field('Почему оценку нужно пересмотреть?','comment','','textarea',{required:true,rows:4,maxlength:4000,placeholder:isTestConversation(c)?'Комментарий для проверки учебной апелляции…':'Объясните, что модель не учла…'}),error,actions('Подать апелляцию','scale'));
+ data.appeals.push({id:'appeal-'+crypto.randomUUID(),conversationId:c.id,criterionId:selected.id,criterionTitle:selected.title,assessmentId:identity,evidenceIds:[],comment,testMode:isTestConversation(current),original:finalAnswers(current)[selected.id].value,status:'open',created:new Date().toLocaleDateString('ru-RU')});save();close();render();savedNotice('Апелляция сохранена и ожидает проверки.');
+ }},h('p',{class:'modal-description'},'Укажите причину пересмотра оценки критерия. Основания исходной оценки доступны проверяющему.'),h('label',{class:'form-label',for:'appeal-criterion'},'Какой критерий нужно пересмотреть?'),select,context,explanation,field('Почему оценку нужно пересмотреть?','comment','','textarea',{required:true,rows:4,maxlength:4000,placeholder:isTestConversation(c)?'Комментарий для проверки учебной апелляции…':'Объясните, что модель не учла…'}),error,actions('Подать апелляцию','scale'));
  });
 }
 function reviewModal(a,c,rule){
@@ -317,7 +326,11 @@ async function syncDataset(group){
 }
 function sourceBar(){
  const list=visibleConversations(),history=data.syncHistory[data.activeDataset],isApi=!['DEMO','import','TEST'].includes(data.activeDataset);
- const connect=btn(syncing?'Загрузка…':isApi?'Обновить набор':'Подключить DEV','download',()=>syncDataset(isApi?data.activeDataset:'DEV'),'button source-connect');connect.disabled=syncing;
+ const hasDev=Boolean(data.syncHistory.DEV)||sourceConversations('DEV').length>0;
+ const connect=btn(syncing?'Загрузка…':isApi?'Обновить набор':hasDev?'Открыть DEV':'Загрузить DEV',isApi||!hasDev?'download':'arrow',()=>{
+  if(!isApi&&hasDev){data.activeDataset='DEV';resetFilters();syncError='';save();render();return;}
+  syncDataset(isApi?data.activeDataset:'DEV');
+ },'button source-connect');connect.disabled=syncing;
  return h('section',{class:'source-bar','aria-label':'Источник диалогов'},h('div',{class:'source-info'},h('span',{class:'source-icon'},icon('globe',21)),h('div',{},h('strong',{},sourceLabel()),h('p',{},isApi?list.filter(c=>c.channel==='agent chat').length+' чатов · '+list.filter(c=>c.channel==='voice call').length+' звонков'+(history?' · Обновлено '+new Date(history.at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}):''):data.activeDataset==='TEST'?'Изолированные копии для проверки оценки и апелляций':data.activeDataset==='DEMO'?'Примеры с демонстрационными оценками':'Диалоги из загруженных файлов'))),h('div',{class:'source-actions'},btn('Сменить','sliders',sourceModal,'text-button'),connect),syncError&&h('p',{class:'source-error',role:'alert'},syncError));
 }
 function sourceModal(){
@@ -350,7 +363,6 @@ function messageContext(c,message){
  if(!message){box.append(h('p',{},'Выберите реплику, чтобы увидеть связанные критерии.'));return box;}
  const related=(c.criteria||[]).filter(r=>c.answers?.[r.id]?.evidence?.includes(message.id));
  box.append(h('strong',{},'Выбрана реплика #'+message.id),h('p',{},!c.answers?'После оценки здесь появятся связанные критерии.':related.length?'Использована в оценке: '+related.map(r=>r.title).join(' · '):'Эта реплика не указана в основаниях оценки.'));
- if(c.answers)box.append(btn('Оспорить с этой репликой','scale',()=>appealModal(c,null,message),'text-button'));
  return box;
 }
 function updateMessageContext(c,message){document.getElementById('message-context')?.replaceWith(messageContext(c,message));}

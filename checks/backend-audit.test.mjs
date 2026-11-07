@@ -86,3 +86,19 @@ test('Organizer network, timeout and non-JSON failures have distinct safe messag
   const body=await result.json();assert.equal(result.status,status);assert.equal(body.code,code);assert.equal(body.isSuccess,false);assert.ok(body.error.length<300);assert.ok(!JSON.stringify(body).includes('SYNTHETIC_SOURCE_SECRET'));assert.ok(!JSON.stringify(body).includes('powerplatform.com'));assert.equal(calls,1);
  }
 });
+
+test('Temporary network diagnostics redact keys and URLs, cap the log, and keep raw details out of API responses',async t=>{
+ const logs=[];t.mock.method(console,'warn',(...parts)=>logs.push(parts));
+ t.mock.method(globalThis,'fetch',()=>{throw new Error('Unexpected external fetch');});
+ const key='fixture-key-PRIVATE-0123456789',otherKey='sk-proj-OTHER_PRIVATE_0123456789';
+ const env={...organizerEnv,OPENAI_API_KEY:key,OPENAI_MODEL:'gpt-5.4'};
+ const failure=()=>new TypeError('Unsupported redirect policy; '+key+' '+otherKey+' '+env.ORGANIZER_API_URL+' https://host.invalid/path?token=PRIVATE_URL\n'+'x'.repeat(300));
+ const verify=await handleApi(apiRequest('/api/ai/verify'),env,{fetcher:async()=>{throw failure();}});
+ const dataset=await handleApi(sourceRequest(),env,{fetcher:async()=>{throw failure();}});
+ assert.equal(logs.length,2);
+ for(const parts of logs){
+  assert.equal(parts[0],'[DEBUG-cqa-network]');assert.equal(typeof parts[1],'string');assert.ok(parts[1].length<=200);assert.match(parts[1],/TypeError: Unsupported redirect policy/);
+  assert.doesNotMatch(parts[1],/PRIVATE|https?:|powerplatform|sk-proj|[\r\n]/);
+ }
+ for(const response of [verify,dataset])assert.ok(!JSON.stringify(await response.json()).includes('Unsupported redirect policy'));
+});

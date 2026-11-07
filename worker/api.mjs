@@ -5,6 +5,12 @@ const DATA_TTL=60_000, AUDIO_TTL=240_000, MAX_AUDIO_BYTES=28*1024*1024;
 const ORGANIZER_HOST="ec88f21f1accecf38e20095a9fe175.a5.environment.api.powerplatform.com";
 const AUDIO_HOST="freedomholdingcorporation.crm11.dynamics.com";
 class SourceError extends Error{constructor(code,message,status=502){super(message);this.name='SourceError';this.code=code;this.status=status;}}
+function logNetworkDiagnostic(stage,error,secrets=[]){
+ let detail=[error?.name,error?.message].filter(value=>typeof value==='string').join(': ')||'Unknown error';
+ for(const secret of secrets)if(typeof secret==='string'&&secret)detail=detail.split(secret).join('[REDACTED]');
+ detail=detail.replaceAll('\/','/').replace(/\bsk-[^\s"'<>]+/gi,'[REDACTED]').replace(/(?:[a-z][a-z0-9+.-]*:)?\/\/[^\s"'<>]+/gi,'[REDACTED_URL]').replace(/[\r\n\u0000-\u001f\u007f]/g,' ');
+ console.warn('[DEBUG-cqa-network]',(stage+': '+detail).slice(0,200));
+}
 function sourceTransportError(error){
  if(error?.name==='AbortError'||error?.name==='TimeoutError')return new SourceError('SOURCE_TIMEOUT','API организаторов не ответил вовремя. Повторите загрузку позже.',504);
  return new SourceError('SOURCE_NETWORK','Не удалось подключиться к API организаторов. Проверьте доступность источника и повторите загрузку.',502);
@@ -19,7 +25,7 @@ export async function fetchDataset(group,env,{refresh=false,fetcher=limitedFetch
  if(!env.ORGANIZER_API_URL)throw new Error("Подключение к API организаторов ещё не настроено.");
  const cached=datasetCache.get(group);if(!refresh&&cached&&Date.now()-cached.at<DATA_TTL)return cached.data;
  const url=safeUrl(env.ORGANIZER_API_URL,ORGANIZER_HOST);url.searchParams.set("group_id",group);
- let response;try{response=await fetcher(url.href,{headers:{Accept:"application/json"}});}catch(error){throw sourceTransportError(error);}
+ let response;try{response=await fetcher(url.href,{headers:{Accept:"application/json"}});}catch(error){logNetworkDiagnostic('dataset',error,[env.ORGANIZER_API_URL,env.OPENAI_API_KEY]);throw sourceTransportError(error);}
  if(!response.ok)throw new Error("API организаторов недоступен (HTTP "+response.status+").");
  let data;try{data=await response.json();}catch(error){
   if(error?.name==='SyntaxError')throw new SourceError('SOURCE_INVALID_JSON','API организаторов вернул ответ не в формате JSON. Повторите загрузку позже.');
@@ -101,6 +107,7 @@ export async function verifyAI(env={},options={}){
   return {verified:true,provider:'openai',model:config.model};
  }catch(error){
   if(error instanceof AIError)throw error;
+  logNetworkDiagnostic('verify',error,[key,env.OPENAI_API_KEY,env.ORGANIZER_API_URL]);
   if(controller.signal.aborted||error?.name==='AbortError'||error?.name==='TimeoutError')throw new AIError('OPENAI_TIMEOUT','Время ожидания OpenAI истекло. Повторите проверку позже.',504);
   throw new AIError('OPENAI_NETWORK','Не удалось связаться с OpenAI. Проверьте подключение и повторите проверку.',502);
  }finally{clearTimeout(timeout);}

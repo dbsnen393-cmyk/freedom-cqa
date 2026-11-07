@@ -1,0 +1,10 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {calculate,initialCriteria,demoConversations} from '../dist/domain.js';
+const full=Object.fromEntries(initialCriteria.map(c=>[c.id,{value:c.type==='scale'?Math.max(...c.scale):c.type==='flag'?false:true}]));
+test('Full applicable checklist gives 100',()=>assert.equal(calculate(initialCriteria,full),100));
+test('Criterion 6 score 7/10 contributes 10.5 of its 15 weight',()=>{const a=structuredClone(full);a.management.value=7;assert.equal(calculate(initialCriteria,a),95.5);});
+test('N/A weights are excluded and remaining criteria normalized',()=>{const a=structuredClone(full);a.identity.value=null;a.need.value=null;a.solution.value=15;a.closing.value=false;assert.equal(calculate(initialCriteria,a),84.62);});
+test('Critical violation does not zero the score',()=>{const a=structuredClone(full);a.critical.value=true;assert.equal(calculate(initialCriteria,a),100);});
+test('No applicable weighted criteria gives null',()=>{const a=Object.fromEntries(initialCriteria.map(c=>[c.id,{value:null}]));assert.equal(calculate(initialCriteria,a),null);});
+test('Demo evidence references existing messages; scales and N/A are valid',()=>{for(const c of demoConversations){if(!c.answers)continue;for(const rule of c.criteria){const a=c.answers[rule.id];assert.ok(a);assert.ok(a.evidence.every(id=>c.messages.some(m=>m.id===id)));if(a.value===null)assert.ok(rule.allowNA);else if(rule.type==='scale')assert.ok(rule.scale.includes(a.value));else assert.equal(typeof a.value,'boolean');}}});

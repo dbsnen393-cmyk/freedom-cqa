@@ -1,0 +1,8 @@
+{
+  "name": "freedom-cqa-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {"dev": "node server.mjs", "start": "node server.mjs", "test": "node --test checks/scoring.test.mjs"},
+  "engines": {"node": ">=20"}
+}

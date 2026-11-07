@@ -5,12 +5,6 @@ const DATA_TTL=60_000, AUDIO_TTL=240_000, MAX_AUDIO_BYTES=28*1024*1024;
 const ORGANIZER_HOST="ec88f21f1accecf38e20095a9fe175.a5.environment.api.powerplatform.com";
 const AUDIO_HOST="freedomholdingcorporation.crm11.dynamics.com";
 class SourceError extends Error{constructor(code,message,status=502){super(message);this.name='SourceError';this.code=code;this.status=status;}}
-function logNetworkDiagnostic(stage,error,secrets=[]){
- let detail=[error?.name,error?.message].filter(value=>typeof value==='string').join(': ')||'Unknown error';
- for(const secret of secrets)if(typeof secret==='string'&&secret)detail=detail.split(secret).join('[REDACTED]');
- detail=detail.replaceAll('\/','/').replace(/\bsk-[^\s"'<>]+/gi,'[REDACTED]').replace(/(?:[a-z][a-z0-9+.-]*:)?\/\/[^\s"'<>]+/gi,'[REDACTED_URL]').replace(/[\r\n\u0000-\u001f\u007f]/g,' ');
- console.warn('[DEBUG-cqa-network]',(stage+': '+detail).slice(0,200));
-}
 function sourceTransportError(error){
  if(error?.name==='AbortError'||error?.name==='TimeoutError')return new SourceError('SOURCE_TIMEOUT','API организаторов не ответил вовремя. Повторите загрузку позже.',504);
  return new SourceError('SOURCE_NETWORK','Не удалось подключиться к API организаторов. Проверьте доступность источника и повторите загрузку.',502);
@@ -19,14 +13,14 @@ function jsonResponse(value,status=200){return new Response(JSON.stringify(value
 function groupFrom(url){const group=url.searchParams.get("group_id")||"DEV";if(!/^[A-Za-z0-9_-]{1,64}$/.test(group))throw new Error("Некорректный group_id.");return group;}
 function safeUrl(value,host){const u=new URL(value);if(u.protocol!=="https:"||u.hostname!==host||u.username||u.password)throw new Error("Недопустимый адрес источника.");return u;}
 async function limitedFetch(url,options={}){
- return fetch(url,{...options,redirect:"error",signal:AbortSignal.timeout(45_000)});
+ return fetch(url,{...options,redirect:"manual",signal:AbortSignal.timeout(45_000)});
 }
 export async function fetchDataset(group,env,{refresh=false,fetcher=limitedFetch}={}){
  if(!env.ORGANIZER_API_URL)throw new Error("Подключение к API организаторов ещё не настроено.");
  const cached=datasetCache.get(group);if(!refresh&&cached&&Date.now()-cached.at<DATA_TTL)return cached.data;
  const url=safeUrl(env.ORGANIZER_API_URL,ORGANIZER_HOST);url.searchParams.set("group_id",group);
- let response;try{response=await fetcher(url.href,{headers:{Accept:"application/json"}});}catch(error){logNetworkDiagnostic('dataset',error,[env.ORGANIZER_API_URL,env.OPENAI_API_KEY]);throw sourceTransportError(error);}
- if(!response.ok)throw new Error("API организаторов недоступен (HTTP "+response.status+").");
+ let response;try{response=await fetcher(url.href,{headers:{Accept:"application/json"}});}catch(error){throw sourceTransportError(error);}
+ if(!response.ok){try{await response.body?.cancel();}catch{}throw new Error("API организаторов недоступен (HTTP "+response.status+").");}
  let data;try{data=await response.json();}catch(error){
   if(error?.name==='SyntaxError')throw new SourceError('SOURCE_INVALID_JSON','API организаторов вернул ответ не в формате JSON. Повторите загрузку позже.');
   throw sourceTransportError(error);
@@ -59,10 +53,10 @@ async function getAudio(group,conversationId,env){
  const data=await fetchDataset(group,env),r=data.records.find(r=>r.conversation_id===conversationId);
  if(!r?.audio_url)throw new Error("У этого диалога нет аудиозаписи.");
  const pageUrl=safeUrl(r.audio_url,ORGANIZER_HOST),page=await limitedFetch(pageUrl.href);
- if(!page.ok)throw new Error("Страница записи недоступна (HTTP "+page.status+").");
+ if(!page.ok){try{await page.body?.cancel();}catch{}throw new Error("Страница записи недоступна (HTTP "+page.status+").");}
  let response=page;
  if((page.headers.get("Content-Type")||"").includes("text/html"))response=await limitedFetch(extractMediaUrl(await page.text()));
- if(!response.ok)throw new Error("Аудиопоток недоступен (HTTP "+response.status+").");
+ if(!response.ok){try{await response.body?.cancel();}catch{}throw new Error("Аудиопоток недоступен (HTTP "+response.status+").");}
  const type=response.headers.get("Content-Type")||"audio/mpeg";
  if(!/^audio\/|^application\/octet-stream/i.test(type))throw new Error("Источник вернул данные, которые не являются аудио.");
  const audio={bytes:await readLimited(response),type,at:Date.now()};
@@ -101,13 +95,12 @@ export async function verifyAI(env={},options={}){
  const config=configuredAI(env);if(!config.configured)throw new AIError('INVALID_MODEL','Проверьте название модели в настройках подключения.',400);
  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),20000);
  try{
-  const response=await (options.fetcher||fetch)('https://api.openai.com/v1/models/'+encodeURIComponent(config.model),{method:'GET',headers:{Authorization:'Bearer '+key,Accept:'application/json'},redirect:'error',signal:controller.signal});
+  const response=await (options.fetcher||fetch)('https://api.openai.com/v1/models/'+encodeURIComponent(config.model),{method:'GET',headers:{Authorization:'Bearer '+key,Accept:'application/json'},redirect:'manual',signal:controller.signal});
   if(!response.ok)throw await providerFailure(response,{verification:true});
   try{await response.body?.cancel();}catch{}
   return {verified:true,provider:'openai',model:config.model};
  }catch(error){
   if(error instanceof AIError)throw error;
-  logNetworkDiagnostic('verify',error,[key,env.OPENAI_API_KEY,env.ORGANIZER_API_URL]);
   if(controller.signal.aborted||error?.name==='AbortError'||error?.name==='TimeoutError')throw new AIError('OPENAI_TIMEOUT','Время ожидания OpenAI истекло. Повторите проверку позже.',504);
   throw new AIError('OPENAI_NETWORK','Не удалось связаться с OpenAI. Проверьте подключение и повторите проверку.',502);
  }finally{clearTimeout(timeout);}

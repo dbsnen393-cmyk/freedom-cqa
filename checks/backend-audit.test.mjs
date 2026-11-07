@@ -87,18 +87,29 @@ test('Organizer network, timeout and non-JSON failures have distinct safe messag
  }
 });
 
-test('Temporary network diagnostics redact keys and URLs, cap the log, and keep raw details out of API responses',async t=>{
- const logs=[];t.mock.method(console,'warn',(...parts)=>logs.push(parts));
- t.mock.method(globalThis,'fetch',()=>{throw new Error('Unexpected external fetch');});
- const key='fixture-key-PRIVATE-0123456789',otherKey='sk-proj-OTHER_PRIVATE_0123456789';
- const env={...organizerEnv,OPENAI_API_KEY:key,OPENAI_MODEL:'gpt-5.4'};
- const failure=()=>new TypeError('Unsupported redirect policy; '+key+' '+otherKey+' '+env.ORGANIZER_API_URL+' https://host.invalid/path?token=PRIVATE_URL\n'+'x'.repeat(300));
- const verify=await handleApi(apiRequest('/api/ai/verify'),env,{fetcher:async()=>{throw failure();}});
- const dataset=await handleApi(sourceRequest(),env,{fetcher:async()=>{throw failure();}});
- assert.equal(logs.length,2);
- for(const parts of logs){
-  assert.equal(parts[0],'[DEBUG-cqa-network]');assert.equal(typeof parts[1],'string');assert.ok(parts[1].length<=200);assert.match(parts[1],/TypeError: Unsupported redirect policy/);
-  assert.doesNotMatch(parts[1],/PRIVATE|https?:|powerplatform|sk-proj|[\r\n]/);
+test('Hosted runtime accepting only follow or manual can verify, assess and load organizer data',async t=>{
+ const env={...organizerEnv,...apiEnv};let calls=0;
+ t.mock.method(globalThis,'fetch',async(url,init)=>{
+  calls++;
+  if(!['follow','manual'].includes(init.redirect))throw new TypeError('Invalid redirect value; runtime only supports follow or manual');
+  assert.equal(init.redirect,'manual');
+  if(url.includes('/v1/models/'))return Response.json({id:'gpt-5.4'});
+  if(url.includes('/v1/responses'))return Response.json({status:'completed',model:'gpt-5.4',output:[{type:'message',content:[{type:'output_text',text:JSON.stringify({answers:Object.fromEntries(rules().map(c=>[c.id,{value:c.type==='scale'?Math.max(...c.scale):c.type!=='flag',reason:'Подтверждается репликой оператора.',evidence:[1],evidenceKind:'present'}]))})}]}]});
+  return Response.json({isSuccess:true,data:{records:[]}});
+ });
+ for(const request of [apiRequest('/api/ai/verify'),apiRequest('/api/assess'),sourceRequest()])assert.equal((await handleApi(request,env)).status,200);
+ assert.equal(calls,3);
+});
+
+test('All external request paths reject redirect responses, cancel their bodies and never follow Location',async t=>{
+ const env={...organizerEnv,...apiEnv};let calls=[],cancelled=0,status=302;
+ t.mock.method(globalThis,'fetch',async(url,init)=>{
+  calls.push({url,init});assert.equal(init.redirect,'manual');assert.ok(!url.includes('attacker.invalid'));
+  return new Response(new ReadableStream({start(controller){controller.enqueue(new Uint8Array([1]));},cancel(){cancelled++;}}),{status,headers:{Location:'https://attacker.invalid/collect'}});
+ });
+ for(status of [301,302,303,307,308])for(const request of [apiRequest('/api/ai/verify'),apiRequest('/api/assess'),sourceRequest()]){
+  calls=[];cancelled=0;const result=await handleApi(request,env);
+  assert.equal(result.status,502);assert.equal(calls.length,1);assert.equal(cancelled,1);
+  assert.ok(!JSON.stringify(await result.json()).includes('attacker.invalid'));
  }
- for(const response of [verify,dataset])assert.ok(!JSON.stringify(await response.json()).includes('Unsupported redirect policy'));
 });

@@ -50,7 +50,7 @@ test('Assessment reprocesses raw conversation and computes score on server, pres
  const c=conversation(),current=rules();c.answers={contact:{value:false,reason:'OLD_VERDICT'}};c.audioUrl='https://private.invalid/?sig=SECRET_URL';c.packet={transcript:[{text:'FORGED_PACKET'}]};
  const raw=fullAnswers();raw.answers.management.value=7;raw.answers.critical.value=true;let calls=0;
  const result=await assessConversation(c,current,3,env,{fetcher:async(url,options)=>{
-  calls++;assert.equal(url,'https://api.openai.com/v1/responses');assert.equal(options.method,'POST');assert.equal(options.redirect,'error');assert.equal(options.headers.Authorization,'Bearer '+env.OPENAI_API_KEY);assert.ok(options.signal instanceof AbortSignal);
+  calls++;assert.equal(url,'https://api.openai.com/v1/responses');assert.equal(options.method,'POST');assert.equal(options.redirect,'manual');assert.equal(options.headers.Authorization,'Bearer '+env.OPENAI_API_KEY);assert.ok(options.signal instanceof AbortSignal);
   const request=JSON.parse(options.body),input=request.input[0].content[0].text;assert.ok(!input.includes('private.person@example.com'));assert.ok(!input.includes('OLD_VERDICT'));assert.ok(!input.includes('SECRET_URL'));assert.ok(!input.includes('FORGED_PACKET'));assert.equal(JSON.parse(input).checklist.version,3);
   return responseFor(raw);
  }});

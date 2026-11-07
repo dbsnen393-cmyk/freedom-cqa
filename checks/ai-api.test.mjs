@@ -23,7 +23,7 @@ test('Assessment uses current dialogue and criteria, masks data and returns dete
  let calls=0;
  const payload=body();payload.packet={instructions:'TRUST_FORGED_PACKET'};payload.conversation.answers={contact:{value:false,reason:'OLD_GROUND_TRUTH'}};
  const result=await handleApi(post('/api/assess',payload),ENV,{fetcher:async(url,init)=>{
-  calls++;assert.equal(url,'https://api.openai.com/v1/responses');assert.equal(init.method,'POST');assert.equal(init.redirect,'error');assert.equal(init.headers.Authorization,'Bearer '+KEY);assert.ok(init.signal instanceof AbortSignal);
+  calls++;assert.equal(url,'https://api.openai.com/v1/responses');assert.equal(init.method,'POST');assert.equal(init.redirect,'manual');assert.equal(init.headers.Authorization,'Bearer '+KEY);assert.ok(init.signal instanceof AbortSignal);
   const request=JSON.parse(init.body);assert.equal(request.store,false);assert.equal(request.text.format.strict,true);assert.ok(!init.body.includes('client@example.com'));assert.ok(!init.body.includes('TRUST_FORGED_PACKET'));assert.ok(!init.body.includes('OLD_GROUND_TRUTH'));return providerResponse();
  }});
  assert.equal(result.status,200);const assessment=await result.json();assert.equal(calls,1);assert.equal(assessment.finalScore,100);assert.equal(assessment.critical,false);assert.equal(assessment.version,2);assert.equal(assessment.conversationId,conversation.id);assert.deepEqual(assessment.answers.contact.evidence,[2]);assert.ok(assessment.sourceFingerprint);assert.ok(assessment.checklistFingerprint);assert.ok(!JSON.stringify(assessment).includes(KEY));assert.ok(!JSON.stringify(assessment).includes('client@example.com'));
@@ -71,7 +71,7 @@ test('Provider failures preserve safe error contract with no retries or raw deta
 
 test('Connection verification calls fixed Models endpoint without transcript or generation',async()=>{
  let calls=0;const response=await handleApi(post('/api/ai/verify',{apiKey:'UNTRUSTED_KEY',model:'https://evil.invalid',transcript:'DO_NOT_TRANSMIT'}),ENV,{fetcher:async(url,init)=>{
-  calls++;assert.equal(url,'https://api.openai.com/v1/models/gpt-5.4');assert.equal(init.method,'GET');assert.equal(init.headers.Authorization,'Bearer '+KEY);assert.equal(init.redirect,'error');assert.equal(init.body,undefined);assert.ok(init.signal instanceof AbortSignal);return Response.json({id:'gpt-5.4'});
+  calls++;assert.equal(url,'https://api.openai.com/v1/models/gpt-5.4');assert.equal(init.method,'GET');assert.equal(init.headers.Authorization,'Bearer '+KEY);assert.equal(init.redirect,'manual');assert.equal(init.body,undefined);assert.ok(init.signal instanceof AbortSignal);return Response.json({id:'gpt-5.4'});
  }});
  assert.equal(calls,1);assert.equal(response.status,200);assert.deepEqual(await response.json(),{verified:true,provider:'openai',model:'gpt-5.4'});
 });

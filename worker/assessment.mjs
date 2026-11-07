@@ -127,7 +127,7 @@ export async function assessConversation(conversation,criteria,version,env={},op
  const packet=prepared.packet,request=buildAssessmentRequest(packet,env),fetcher=options.fetcher||fetch;
  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),120000);let response;
  try{
-  const upstream=await fetcher(OPENAI_RESPONSES_URL,{method:'POST',headers:{'Authorization':'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify(request),signal:controller.signal,redirect:'error'});
+  const upstream=await fetcher(OPENAI_RESPONSES_URL,{method:'POST',headers:{'Authorization':'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify(request),signal:controller.signal,redirect:'manual'});
   if(!upstream.ok)throw await providerFailure(upstream);
   response=await readProviderJSON(upstream);
  }catch(error){

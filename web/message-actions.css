@@ -1,12 +1,12 @@
-/* Message selection and the current playback position remain distinct. */
+/* Transcript states share a single green selection treatment. */
 .message-interaction-hint{padding:11px 20px;margin:0;border-bottom:1px solid var(--line,#dfe4e9);font-size:12px;line-height:1.6;color:var(--muted,#5e6b77);background:#fff}
-.message.message-interactive{cursor:pointer;position:relative;outline-offset:4px}
+.message.message-interactive{cursor:pointer;position:relative;border-width:2px;outline-offset:3px}
 .message.message-interactive:hover{border-color:#aab8c4}
-.message.message-interactive:focus-visible{outline:3px solid #356da3;outline-offset:3px}
-.message.message-interactive.is-selected{border-color:#789bb9;box-shadow:inset 3px 0 0 #356da3}
-.message.message-interactive.is-selected.is-playing{box-shadow:inset 3px 0 0 #356da3,0 0 0 2px var(--green,#137446)}
-.message.message-interactive.is-selected.highlighted{box-shadow:inset 3px 0 0 #356da3,0 0 0 2px #8bc188}
-.message-selection-label{display:block;font-size:11px;font-weight:600;line-height:1.5;color:#315d85;margin-top:7px}
+.message.message-interactive:focus-visible{outline:2px solid var(--green,#137446);outline-offset:3px}
+/* One green border serves selection, playback and evidence, including keyboard focus. */
+.transcript .message.message-interactive:is(.is-selected,.is-playing,.highlighted){border-color:var(--green,#137446);box-shadow:none;outline:none}
+.transcript .message.message-interactive:is(.is-selected,.is-playing,.highlighted):focus-visible{border-style:dashed}
+.message-selection-label{display:block;font-size:11px;font-weight:600;line-height:1.5;color:var(--green,#137446);margin-top:7px}
 .message-selection-label[hidden]{display:none}
 @media(max-width:760px){.message-interaction-hint{padding:10px 15px}.message.message-interactive{min-height:44px}}
 @media(prefers-reduced-motion:reduce){.message.message-interactive{transition:none}}

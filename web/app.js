@@ -57,7 +57,7 @@ const btn=(text,ico,fn,cls="button")=>h("button",{class:cls,type:"button","aria-
 const tag=(text,tone="neutral",ico)=>h("span",{class:"tag "+tone},ico&&icon(ico,12),text);
 const initials=name=>name.split(" ").slice(0,2).map(x=>x[0]).join("");
 const tone=score=>score===null?"neutral":score>=90?"green":score>=75?"amber":"red";
-const nav=[["overview","Обзор","grid"],["dialogs","Диалоги","chats"],["checklists","Чек-листы","list"],["appeals","Апелляции","scale"],["settings","Настройки","sliders"]];
+const nav=[["overview","Обзор","grid"],["dialogs","Диалоги","chats"],["checklists","Чек-листы","list"],["appeals","Апелляции","scale"]];
 const roleNames={client:"Клиент",operator:"Оператор",system:"Система",bot:"Бот"};
 const go=url=>{location.hash=url;};
 function notify(text){const box=document.getElementById("toast");box.replaceChildren(icon("checks",20),h("span",{},text),btn("","close",()=>box.classList.remove("visible"),"toast-close"));box.classList.add("visible");clearTimeout(notify.timer);notify.timer=setTimeout(()=>box.classList.remove("visible"),5500);}
@@ -84,18 +84,17 @@ function render(){
  stopPlayback();
  const focused=document.activeElement?.id;const caret=document.activeElement?.selectionStart;
  const active=route.startsWith("dialog/")?"dialogs":route;
- const navActive=active==="validation"?"settings":active;
  const c=route.startsWith("dialog/")?data.conversations.find(c=>encodeURIComponent(c.id)===route.slice(7)):null;
  const openCount=scopedAppeals().filter(a=>a.status==="open").length;
  const sidebar=h("aside",{id:"main-navigation",class:"sidebar"+(menuOpen?" is-open":""),inert:matchMedia("(max-width:1000px)").matches&&!menuOpen},
   h("a",{href:"#overview",class:"brand","aria-label":"Freedom CQA — главная"},h("img",{src:"./freedom-logo.svg",alt:"Freedom",width:142,height:34}),h("span",{},"CQA")),
   h("div",{class:"workspace"},h("strong",{},"Контроль качества")),
   h("p",{class:"nav-label"},"РАЗДЕЛЫ"),
-  h("nav",{"aria-label":"Основная навигация"},nav.map(([id,label,ico])=>h("a",{href:"#"+id,class:"nav-item"+(id==="settings"?" settings-link":"")+(navActive===id?" active":""),"aria-current":navActive===id?"page":null},icon(ico,20),h("span",{},label),id==="dialogs"?h("small",{},visibleConversations().length):id==="appeals"&&openCount?h("small",{},openCount):null))),
+  h("nav",{"aria-label":"Основная навигация"},nav.map(([id,label,ico])=>h("a",{href:"#"+id,class:"nav-item"+(active===id?" active":""),"aria-current":active===id?"page":null},icon(ico,20),h("span",{},label),id==="dialogs"?h("small",{},visibleConversations().length):id==="appeals"&&openCount?h("small",{},openCount):null))),
   h("div",{class:"sidebar-bottom"},h("div",{class:"storage-note"},icon("file",17),h("div",{},h("strong",{},"Данные этого браузера"),h("span",{},"Экспорт доступен в списке диалогов"))),h("div",{class:"sidebar-footer"},h("span",{},"FREEDOM CQA"),h("span",{},"v0.5"))));
  const title=c?c.title:({overview:"Качество диалогов",dialogs:"Все диалоги",checklists:"Чек-листы оценки",appeals:"Апелляции",settings:"Настройки",validation:"Проверка точности"}[active]||"Диалог не найден");
  const description=c?"Реплики, результаты проверки и история решений.":({overview:"Сводка по выбранному набору диалогов.",dialogs:"Поиск, фильтрация и оценка диалогов.",checklists:"Критерии, веса и условия применения.",appeals:"Заявки на пересмотр оценок и принятые решения.",settings:"Подключения, источники данных и проверка модели.",validation:"Сравнение оценок с эталонной разметкой."}[active]||"");
- const header=h("header",{class:"topbar"},h("div",{class:"breadcrumb"},btn("","menu",()=>toggleMenu(),"icon-button mobile-menu"),active==="validation"?h("a",{href:"#settings"},"Настройки"):h("span",{},"Рабочее пространство"),icon("chevron",14),h("strong",{},c?"Диалог":active==="validation"?"Проверка точности":nav.find(n=>n[0]===active)?.[1]||"CQA")),h("div",{class:"topbar-right"},ai.statusButton(),h("button",{class:"source-switch",onClick:sourceModal},h("span",{class:"tiny-dot green-dot"}),h("span",{class:"source-switch-label",title:sourceLabel()},sourceLabel()),icon("down",14))));
+ const header=h("header",{class:"topbar"},h("div",{class:"breadcrumb"},btn("","menu",()=>toggleMenu(),"icon-button mobile-menu"),active==="validation"?h("a",{href:"#settings"},"Настройки"):h("span",{},"Рабочее пространство"),icon("chevron",14),h("strong",{},c?"Диалог":active==="validation"?"Проверка точности":active==="settings"?"Настройки":nav.find(n=>n[0]===active)?.[1]||"CQA")),h("div",{class:"topbar-right"},ai.statusButton(),h("button",{class:"source-switch",onClick:sourceModal},h("span",{class:"tiny-dot green-dot"}),h("span",{class:"source-switch-label",title:sourceLabel()},sourceLabel()),icon("down",14))));
  const menuButton=header.querySelector(".mobile-menu");menuButton.id='navigation-toggle';menuButton.setAttribute('aria-label',menuOpen?'Закрыть меню':'Открыть меню');menuButton.setAttribute('aria-expanded',String(menuOpen));menuButton.setAttribute('aria-controls','main-navigation');
  sidebar.addEventListener('keydown',e=>{if(e.key==='Escape'&&menuOpen){e.preventDefault();menuOpen=false;render();document.getElementById('navigation-toggle')?.focus();}});
  const main=h("main",{id:"main-content",class:"main-content"},

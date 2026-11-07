@@ -1,5 +1,5 @@
 import {formatTime,timelineEntries,activeMessageAt,recordingPauses} from './timeline.js';
-import {groupTrackEntries} from './track-layout.js';
+import {layoutTrackEntries} from './track-layout.js';
 let live=null;const positions=new Map();
 export function stopPlayback(){live?.destroy();live=null;}
 export function seekMessage(id){live?.seekMessage(id);}
@@ -8,11 +8,11 @@ export function createTranscript(c,{h,icon,save,onMessageSelect}){
  let entries=timelineEntries(c),time=initial.time,playing=false,duration=0,durationKnown=false,rate=initial.rate,follow=true,lastId=null,timer=null,alive=true,ready=!voice,focusedId=initial.focusedId??null;
  const rows=new Map(),chips=new Map(),lanes=new Map(),markers=new Map();
  let selectedId=c.messages.some(m=>m.id===initial.selectedId)?initial.selectedId:null;
- let drag=null,observer=null,resizeFrame=null,lastWidth=0,clusterTrigger=null;
+ let drag=null,observer=null,resizeFrame=null,lastWidth=0;
  const participantKey=m=>m.role==='system'?'system':m.participantId||m.role;
  const participantName=m=>c.participants.find(p=>p.id===m.participantId)?.label||({system:'Система',bot:'Бот',operator:'Оператор',client:'Клиент'}[m.role])||m.role;
  const endTime=()=>voice&&durationKnown?duration:(entries.at(-1)?.at||0);
- const axisSpan=()=>Math.max(1,endTime());
+ const axisSpan=()=>endTime()>0?endTime():1;
  const audio=voice&&c.audioUrl?h('audio',{src:c.audioUrl,preload:'none'}):null;
  const status=h('span',{class:'playback-status',role:'status'},voice?(audio?'Запись загружается при воспроизведении':'Аудиозапись не предоставлена'):'Навигация по переписке');
  const current=h('strong',{class:'current-speaker'},'Начало диалога');
@@ -24,30 +24,38 @@ export function createTranscript(c,{h,icon,save,onMessageSelect}){
   const step=event.shiftKey?10:1,changes={ArrowRight:time+step,ArrowUp:time+step,ArrowLeft:time-step,ArrowDown:time-step,PageUp:time+10,PageDown:time-10,Home:0,End:endTime()};
   if(!(event.key in changes))return;event.preventDefault();focusedId=null;seek(changes[event.key],true);
  }});
- const playhead=h('div',{class:'track-playhead','aria-hidden':'true'},h('span',{}));
+ const playhead=h('div',{class:'track-playhead','aria-hidden':'true'});
+ const rulerHead=h('span',{class:'track-ruler-playhead','aria-hidden':'true'});
  const hover=h('span',{class:'track-hover',hidden:true,'aria-hidden':'true'});
  const plot=h('div',{class:'track-plot',onPointerDown:event=>{
   if(event.button!==0||event.target.closest('button')||!entries.length&&!durationKnown)return;
-  event.preventDefault();ruler.focus({preventScroll:true});closeCluster();
+  event.preventDefault();ruler.focus({preventScroll:true});
   drag={id:event.pointerId,resume:playing};if(playing)pause();plot.setPointerCapture(event.pointerId);plot.classList.add('is-scrubbing');focusedId=null;seekPointer(event);
  },onPointerMove:event=>{showHover(event);if(drag?.id===event.pointerId)seekPointer(event);},onPointerUp:event=>{if(drag?.id===event.pointerId)finishScrub();},onPointerCancel:()=>finishScrub(),onLostPointerCapture:()=>finishScrub(),onPointerLeave:()=>{if(!drag)hover.hidden=true;}},ruler);
  const labelColumn=h('div',{class:'track-labels','aria-label':'Участники'},h('span',{class:'track-label-heading'},'Участники'));
  const laneParticipants=new Map(c.participants.map(p=>[p.id,p]));
  for(const m of c.messages){const key=participantKey(m);if(!laneParticipants.has(key))laneParticipants.set(key,{id:key,label:participantName(m),role:m.role,number:null});}
  for(const [key,p]of laneParticipants){
-  const chip=h('div',{class:'track-participant '+p.role,title:p.label},h('b',{},p.number?String(p.number).padStart(2,'0'):'—'),h('span',{},p.label));
+  const chip=h('div',{class:'track-participant '+p.role,title:p.label},h('div',{class:'track-participant-label'},h('b',{},p.number?String(p.number).padStart(2,'0'):'—'),h('span',{},p.label)));
   chips.set(key,chip);labelColumn.append(chip);
   const lane=h('div',{class:'track-lane '+p.role,'aria-label':'Начало реплик: '+p.label});lanes.set(key,lane);plot.append(lane);
  }
- plot.append(playhead,hover);
- const clusterPanel=h('div',{class:'track-cluster',hidden:true,onKeyDown:event=>{if(event.key==='Escape'){event.preventDefault();closeCluster(true);}}});
+ plot.append(playhead);
+ const trackGrid=h('div',{class:'track-grid',role:'region','aria-label':'Дорожки участников. Прокрутите вниз, чтобы увидеть все метки.'},labelColumn,h('div',{class:'track-plot-wrap'},plot));
  const trackNote=h('p',{class:'track-note'});
- const track=h('div',{class:'conversation-track'},h('div',{class:'track-grid'},labelColumn,h('div',{class:'track-plot-wrap'},plot)),clusterPanel,trackNote);
+ const track=h('div',{class:'conversation-track'},trackGrid,trackNote);
  function setPlayIcon(value){
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 20 20');svg.setAttribute('width','20');svg.setAttribute('height','20');svg.setAttribute('aria-hidden','true');
   const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('fill','currentColor');path.setAttribute('d',value?'M5 4h3v12H5zm7 0h3v12h-3z':'M6 3.5v13l10-6.5z');svg.append(path);toggle.replaceChildren(svg);
  }
  function scrollToRow(id){const row=rows.get(id);if(!row)return;const box=messages.getBoundingClientRect(),r=row.getBoundingClientRect();if(r.top<box.top||r.bottom>box.bottom)messages.scrollTop+=r.top-box.top-(box.height-r.height)/2;}
+ function revealMarker(button){
+  if(!button)return;
+  const box=trackGrid.getBoundingClientRect(),r=button.getBoundingClientRect(),top=box.top+ruler.offsetHeight+4,bottom=box.bottom-4;
+  if(r.top<top)trackGrid.scrollTop-=top-r.top;
+  else if(r.bottom>bottom)trackGrid.scrollTop+=r.bottom-bottom;
+ }
+ function scrollToMarker(id){for(const[button,entry]of markers)if(entry.message.id===id){revealMarker(button);break;}}
  function repaint(forceScroll=false){
   const end=endTime();
   // A restored audio position can be later than the last transcript start. Keep it
@@ -57,6 +65,7 @@ export function createTranscript(c,{h,icon,save,onMessageSelect}){
   ruler.setAttribute('aria-valuemax',String(end));ruler.setAttribute('aria-valuenow',String(shownTime));ruler.setAttribute('aria-valuetext',formatTime(shownTime)+' из '+formatTime(end));
   ruler.setAttribute('aria-disabled',String(end<=0));
   playhead.style.left=(shownTime/axisSpan()*100)+'%';
+  rulerHead.style.left=playhead.style.left;
   let m=activeMessageAt(entries,time);
   const focused=entries.find(entry=>entry.message.id===focusedId);
   // An explicit choice distinguishes messages sharing the same start until the next start.
@@ -66,36 +75,34 @@ export function createTranscript(c,{h,icon,save,onMessageSelect}){
    for(const[key,row]of rows){row.classList.toggle('is-playing',key===id);if(key===id)row.setAttribute('aria-current','true');else row.removeAttribute('aria-current');}
    for(const[key,chip]of chips){const active=key===(m?participantKey(m):null);chip.classList.toggle('is-speaking',active);lanes.get(key)?.classList.toggle('is-current',active);}
    current.textContent=m?participantName(m)+' · реплика #'+m.id:'Начало диалога';
-   lastId=id;if(forceScroll||follow&&playing)scrollToRow(id);
-  }else if(forceScroll)scrollToRow(id);
+   lastId=id;if(forceScroll||follow&&playing){scrollToRow(id);scrollToMarker(id);}
+  }else if(forceScroll){scrollToRow(id);scrollToMarker(id);}
   updateMarkers();
  }
  function updateMarkers(){
-  for(const [button,group]of markers){const active=group.some(e=>e.message.id===lastId),selected=group.some(e=>e.message.id===selectedId);button.classList.toggle('is-active',active);button.classList.toggle('is-selected',selected);button.setAttribute('aria-pressed',String(selected));if(active)button.setAttribute('aria-current','true');else button.removeAttribute('aria-current');}
- }
- function closeCluster(restoreFocus=false){const trigger=clusterTrigger;clusterPanel.hidden=true;clusterPanel.replaceChildren();trigger?.setAttribute('aria-expanded','false');clusterTrigger=null;if(restoreFocus&&trigger?.isConnected)trigger.focus({preventScroll:true});}
- function openCluster(group,button){
-  if(clusterTrigger===button&&!clusterPanel.hidden){closeCluster();return;}closeCluster();clusterTrigger=button;button.setAttribute('aria-expanded','true');
-  clusterPanel.replaceChildren(h('div',{class:'track-cluster-heading'},h('strong',{},'Выберите реплику · '+group.length),h('button',{type:'button','aria-label':'Закрыть список реплик',onClick:()=>closeCluster(true)},'Закрыть')),h('div',{class:'track-cluster-list'},group.map(({message,at})=>h('button',{type:'button',class:'track-cluster-message',onClick:()=>{selectMessage(message);closeCluster(true);}},h('span',{class:'track-cluster-time'},formatTime(at)),h('span',{},h('strong',{},'#'+message.id+' · '+participantName(message)),h('span',{},message.text))))));
-  clusterPanel.hidden=false;clusterPanel.querySelector('.track-cluster-message')?.focus({preventScroll:true});
+  for(const [button,entry]of markers){const active=entry.message.id===lastId,selected=entry.message.id===selectedId;button.classList.toggle('is-active',active);button.classList.toggle('is-selected',selected);button.setAttribute('aria-pressed',String(selected));if(active)button.setAttribute('aria-current','true');else button.removeAttribute('aria-current');}
  }
  function renderTrack(){
-  if(!alive)return;closeCluster();markers.clear();const end=endTime(),width=plot.getBoundingClientRect().width||320;lastWidth=width;
+  if(!alive)return;
+  const focusedMarker=document.activeElement?.closest('.track-marker')?.dataset.messageId;
+  markers.clear();const end=endTime(),width=plot.getBoundingClientRect().width||320,rowHeight=window.matchMedia('(pointer:coarse)').matches?48:44;lastWidth=width;
   const ticks=end>0?[0,.25,.5,.75,1]:[entries.length?0:.5];
-  ruler.replaceChildren(...ticks.map(fraction=>h('span',{style:{left:fraction*100+'%'},'aria-hidden':'true'},end<=0&&!entries.length?'Нет таймкодов':formatTime(end*fraction))));
-  playhead.hidden=end<=0&&!entries.length;
+  ruler.replaceChildren(...ticks.map(fraction=>h('span',{class:'track-tick',style:{left:fraction*100+'%'},'aria-hidden':'true'},end<=0&&!entries.length?'Нет таймкодов':formatTime(end*fraction))),rulerHead,hover);
+  playhead.hidden=rulerHead.hidden=end<=0&&!entries.length;
   for(const[key,lane]of lanes){
    const laneEntries=entries.filter(entry=>participantKey(entry.message)===key);
-   const groups=groupTrackEntries(laneEntries,end,width,window.matchMedia('(pointer:coarse)').matches?48:36);
-   lane.replaceChildren(...groups.map(group=>{
-    const entry=group[0],many=group.length>1,label=many?group.length+' реплик, начиная с '+formatTime(entry.at)+'. Открыть список':'Реплика #'+entry.message.id+'. '+participantName(entry.message)+'. '+formatTime(entry.at);
-    const button=h('button',{type:'button',class:'track-marker'+(many?' is-cluster':''),style:{left:entry.at/axisSpan()*100+'%'},'aria-label':label,'aria-expanded':many?'false':null,title:label,'data-message-ids':group.map(e=>e.message.id).join(','),onClick:event=>{event.stopPropagation();if(many)openCluster(group,button);else{closeCluster();selectMessage(entry.message);}}},h('span',{class:'track-marker-start','aria-hidden':'true'}),many?h('span',{class:'track-marker-count','aria-hidden':'true'},group.length):null);
-    markers.set(button,group);return button;
+   const layout=layoutTrackEntries(laneEntries,end,width);
+   lane.style.height=chips.get(key).style.height=(layout.rows*rowHeight)+'px';
+   lane.replaceChildren(...layout.markers.map(({entry,row})=>{
+    const label='Реплика #'+entry.message.id+'. '+participantName(entry.message)+'. '+formatTime(entry.at);
+    const button=h('button',{type:'button',class:'track-marker',style:{left:entry.at/axisSpan()*100+'%',top:(row*rowHeight)+'px'},'aria-label':label,title:label,'data-message-id':entry.message.id,onFocus:()=>{if(button.matches(':focus-visible'))revealMarker(button);},onClick:event=>{event.stopPropagation();selectMessage(entry.message);}},h('span',{class:'track-marker-number','aria-hidden':'true'},'#'+entry.message.id),h('span',{class:'track-marker-start','aria-hidden':'true'}));
+    markers.set(button,entry);return button;
    }));
   }
   const visible=entries.filter(entry=>entry.at<=end).length,omitted=c.messages.length-visible;
   trackNote.textContent='Метки — начало реплик; время окончания не задано.'+(omitted?' Вне шкалы: '+omitted+' — доступны в транскрипте.':'')+(voice&&!durationKnown&&entries.length?' Шкала по транскрипту.':'');
   toggle.disabled=voice?!audio:end<=0;repaint();
+  if(focusedMarker)for(const[button,entry]of markers)if(String(entry.message.id)===focusedMarker){button.focus({preventScroll:true});break;}
  }
  function setPlaying(value){playing=value;setPlayIcon(value);toggle.setAttribute('aria-label',value?'Приостановить':voice?'Воспроизвести запись':'Запустить таймлайн');toggle.setAttribute('aria-pressed',String(value));}
  function pause(){if(audio)audio.pause();clearInterval(timer);setPlaying(false);if(!audio)status.textContent='На паузе';}
@@ -108,9 +115,9 @@ export function createTranscript(c,{h,icon,save,onMessageSelect}){
  function seekPointer(event){const rect=plot.getBoundingClientRect();seek(Math.max(0,Math.min(1,(event.clientX-rect.left)/Math.max(1,rect.width)))*endTime(),true);showHover(event);}
  function showHover(event){
   if(endTime()<=0&&!entries.length){hover.hidden=true;return;}
-  const rect=plot.getBoundingClientRect(),group=!drag?markers.get(event.target.closest('.track-marker')):null;
-  const fraction=group?group[0].at/axisSpan():Math.max(0,Math.min(1,(event.clientX-rect.left)/Math.max(1,rect.width)));
-  hover.textContent=formatTime(group?group[0].at:fraction*endTime())+(group?' · '+(group.length>1?group.length+' реплик':'#'+group[0].message.id):'');hover.style.left=fraction*100+'%';hover.hidden=false;
+  const rect=plot.getBoundingClientRect(),entry=!drag?markers.get(event.target.closest('.track-marker')):null;
+  const fraction=entry?entry.at/axisSpan():Math.max(0,Math.min(1,(event.clientX-rect.left)/Math.max(1,rect.width)));
+  hover.textContent=formatTime(entry?entry.at:fraction*endTime())+(entry?' · #'+entry.message.id:'');hover.style.left='clamp(32px, '+fraction*100+'%, calc(100% - 32px))';hover.hidden=false;
  }
  function finishScrub(){if(!drag)return;const{resume,id}=drag;drag=null;if(plot.hasPointerCapture(id))plot.releasePointerCapture(id);plot.classList.remove('is-scrubbing');hover.hidden=true;if(resume&&alive)play();}
  function selectMessage(message,{seekToTime=true,notify=true}={}){

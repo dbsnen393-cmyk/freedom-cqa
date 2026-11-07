@@ -1,11 +1,12 @@
-// Markers represent starts only. Nearby starts share a disclosure, never a duration bar.
-export function groupTrackEntries(entries,duration,width,minGap=36){
- const span=duration>0?duration:1,groups=[];
- for(const entry of entries){
-  if(!Number.isFinite(entry.at)||entry.at<0||entry.at>duration)continue;
-  const previous=groups.at(-1);
-  if(previous&&(entry.at-previous[0].at)/span*Math.max(1,width)<minGap)previous.push(entry);
-  else groups.push([entry]);
+// Every start has its own target. Resolve collisions vertically, never by moving time.
+export function layoutTrackEntries(entries,duration,width,targetWidth=44,gap=8){
+ const span=duration>0?duration:1,rowEnds=[],markers=[];
+ const valid=entries.filter(entry=>Number.isFinite(entry.at)&&entry.at>=0&&entry.at<=duration).slice().sort((a,b)=>a.at-b.at||a.message.id-b.message.id);
+ for(const entry of valid){
+  const x=entry.at/span*Math.max(0,width);
+  let row=rowEnds.findIndex(previous=>x-previous>=targetWidth+gap);
+  if(row<0)row=rowEnds.length;
+  rowEnds[row]=x;markers.push({entry,row,x});
  }
- return groups;
+ return {markers,rows:Math.max(1,rowEnds.length)};
 }

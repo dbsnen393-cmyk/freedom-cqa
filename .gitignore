@@ -12,3 +12,5 @@ dist/
 .claude-flow/
 
 .swarm/
+
+judge-config.env

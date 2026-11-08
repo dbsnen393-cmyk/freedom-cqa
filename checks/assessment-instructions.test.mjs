@@ -11,8 +11,8 @@ const guidance=[
  ['identity','need','Ошибка идентификации не означает ошибку выявления потребности'],
  ['critical','empathy','Critical не означает автоматически отсутствие эмпатии']
 ];
-test('Prompt v1.4 orders four decisions and prevents cross-criterion penalties without requesting chain of thought',async()=>{
- const text=await instructions(initialCriteria);assert.equal(ASSESSMENT_PROMPT_VERSION,'cqa-assessment-1.4');
+test('Prompt v1.6 orders four decisions and prevents cross-criterion penalties without requesting chain of thought',async()=>{
+ const text=await instructions(initialCriteria);assert.equal(ASSESSMENT_PROMPT_VERSION,'cqa-assessment-1.6');
  const steps=['1. Определить применимость','2. Выбрать значение','3. Подобрать доказательства','4. Сформировать краткое обоснование'];
  let previous=-1;for(const step of steps){const index=text.indexOf(step);assert.ok(index>previous);previous=index;}
  assert.match(text,/Не раскрывай внутреннюю цепочку рассуждений/);

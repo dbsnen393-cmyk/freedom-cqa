@@ -35,5 +35,5 @@ test('API separates raw-body size from prepared request budget without sending o
  assert.equal(response.status,413);const error=await response.json();assert.equal(error.code,'GEMINI_INPUT_TOO_LARGE');assert.match(error.error,/Ожидание не поможет/);assert.equal(calls,0);assert.deepEqual(c,original);
 });
 test('Actual upstream 429 remains a provider failure with one request, unlike local oversized input',async()=>{
- let calls=0;const c=conversation([['client','Вопрос'],['operator','Здравствуйте!']]);await assert.rejects(assessConversation(c,rules(),1,env,{limiter:createGeminiLimiter(),fetcher:async()=>{calls++;return new Response('',{status:429,headers:{'Retry-After':'60'}});}}),e=>e.code==='GEMINI_LIMIT'&&e.status===429);assert.equal(calls,1);assert.equal(ASSESSMENT_PROMPT_VERSION,'cqa-assessment-1.4');
+ let calls=0;const c=conversation([['client','Вопрос'],['operator','Здравствуйте!']]);await assert.rejects(assessConversation(c,rules(),1,env,{limiter:createGeminiLimiter(),fetcher:async()=>{calls++;return new Response('',{status:429,headers:{'Retry-After':'60'}});}}),e=>e.code==='GEMINI_LIMIT'&&e.status===429);assert.equal(calls,1);assert.equal(ASSESSMENT_PROMPT_VERSION,'cqa-assessment-1.6');
 });

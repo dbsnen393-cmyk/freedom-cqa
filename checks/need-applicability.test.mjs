@@ -48,7 +48,7 @@ for(const c of cases)test('Need applicability regression: '+c.name,async()=>{
  assert.equal(result.answers.need.value===null,result.answers.need.evidenceKind==='not_applicable');
  if(c.value===null)assert.ok(result.answers.need.evidence.includes(c.conversation.messages.find(m=>m.role==='client').id));
  for(const rule of initialCriteria.filter(rule=>rule.id!=='need'))assert.deepEqual(result.answers[rule.id],raw.answers[rule.id]);
- assert.equal(result.assessment.promptVersion,ASSESSMENT_PROMPT_VERSION);assert.equal(ASSESSMENT_PROMPT_VERSION,'cqa-assessment-1.4');
+ assert.equal(result.assessment.promptVersion,ASSESSMENT_PROMPT_VERSION);assert.equal(ASSESSMENT_PROMPT_VERSION,'cqa-assessment-1.6');
 });
 
 test('Need v1.4 never silently substitutes a model value based on the wording of reason',async()=>{

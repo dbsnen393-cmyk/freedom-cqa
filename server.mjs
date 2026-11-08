@@ -7,7 +7,7 @@ import {handleApi} from './worker/api.mjs';
 import {createLocalSettings} from './local-settings.mjs';
 const root=fileURLToPath(new URL('./web/',import.meta.url));
 const env={...process.env};
-try{for(const line of (await readFile(new URL('./.env',import.meta.url),'utf8')).split(/\r?\n/)){const m=/^([A-Z_]+)=(.*)$/.exec(line.trim());if(m&&!env[m[1]])env[m[1]]=m[2];}}catch{}
+for(const file of ['.env','judge-config.env']){try{for(const line of (await readFile(new URL('./'+file,import.meta.url),'utf8')).split(/\r?\n/)){const m=/^([A-Z_]+)=(.*)$/.exec(line.trim());if(m&&!Object.hasOwn(env,m[1]))env[m[1]]=m[2];}}catch{}}
 const localSettings=createLocalSettings({env,envPath:fileURLToPath(new URL('./.env',import.meta.url))});
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.json':'application/json'};
 const port=Number(process.env.PORT||4173);
